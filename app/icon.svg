@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Pensiunea Grădina Mărioarei">
+  <rect width="64" height="64" rx="14" fill="#2D4A3E"/>
+  <path d="M14 35L32 20L50 35V50H37V40H27V50H14V35Z" fill="#FAF7F2"/>
+  <path d="M25 18C25 14 28 11 32 11C36 11 39 14 39 18C39 22 36 25 32 25C28 25 25 22 25 18Z" fill="#B87333"/>
+</svg>
