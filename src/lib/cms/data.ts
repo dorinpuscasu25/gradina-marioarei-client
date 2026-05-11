@@ -1,7 +1,7 @@
 import { createTranslator } from '@/src/i18n/server';
 import type { Language } from '@/src/i18n/translations';
 import { getPublicSupabase } from '@/src/lib/supabase/server';
-import type { Accommodation, AccommodationRow, BookingUnit } from './types';
+import type { Accommodation, AccommodationRow, BookingUnit, Experience, ExperienceRow } from './types';
 
 function localized<T>(value: Partial<Record<Language, T>> | null | undefined, lang: Language, fallback: T): T {
   return value?.[lang] ?? value?.ro ?? value?.en ?? fallback;
@@ -113,6 +113,78 @@ export async function getBookingUnits(lang: Language): Promise<BookingUnit[]> {
     title: unit.title,
     price: unit.price
   }));
+}
+
+export function getFallbackExperiences(lang: Language): Experience[] {
+  const t = createTranslator(lang);
+  const items = t('experiences.items') as Array<{ title: string; desc: string }>;
+
+  return items.map((item, index) => ({
+    id: `fallback-${index}`,
+    slug: `experience-${index + 1}`,
+    title: item.title,
+    description: item.desc,
+    location: '',
+    highlights: [],
+    images: ['/zona_pentru_rug.jpg', '/ciubar.jpg'],
+    price: '',
+    capacity: null,
+    durationMinutes: null,
+    sortOrder: index * 10
+  }));
+}
+
+export function mapExperience(row: ExperienceRow, lang: Language): Experience {
+  return {
+    id: row.id,
+    slug: row.slug,
+    title: localized(row.title, lang, row.slug),
+    description: localized(row.description, lang, ''),
+    location: localized(row.location, lang, ''),
+    highlights: localized(row.highlights, lang, []),
+    images: row.images?.length ? row.images : ['/zona_pentru_rug.jpg'],
+    price: money(row.price, row.currency),
+    capacity: row.capacity,
+    durationMinutes: row.duration_minutes,
+    sortOrder: row.sort_order ?? 0
+  };
+}
+
+export async function getExperiences(lang: Language): Promise<Experience[]> {
+  const fallback = getFallbackExperiences(lang);
+  const supabase = getPublicSupabase();
+
+  if (!supabase) {
+    return fallback;
+  }
+
+  const { data, error } = await supabase
+    .from('experiences')
+    .select('*')
+    .eq('status', 'published')
+    .order('sort_order', { ascending: true });
+
+  if (error || !data?.length) {
+    return fallback;
+  }
+
+  return (data as ExperienceRow[]).map((row) => mapExperience(row, lang));
+}
+
+export async function getSiteSettings() {
+  const supabase = getPublicSupabase();
+
+  if (!supabase) {
+    return {};
+  }
+
+  const { data, error } = await supabase.from('app_settings').select('*').in('key', ['contact', 'about']);
+
+  if (error || !data) {
+    return {};
+  }
+
+  return Object.fromEntries(data.map((row: any) => [row.key, row.value]));
 }
 
 export async function createCmsTranslator(lang: Language) {

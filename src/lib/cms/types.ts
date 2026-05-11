@@ -32,6 +32,36 @@ export type AccommodationRow = {
   sort_order: number | null;
 };
 
+export type Experience = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  location: string;
+  highlights: string[];
+  images: string[];
+  price: string;
+  capacity: number | null;
+  durationMinutes: number | null;
+  sortOrder: number;
+};
+
+export type ExperienceRow = {
+  id: string;
+  slug: string;
+  title: LocalizedValue<string>;
+  description: LocalizedValue<string>;
+  location: LocalizedValue<string>;
+  highlights: LocalizedValue<string[]>;
+  images: string[];
+  price: number | null;
+  currency: string | null;
+  duration_minutes: number | null;
+  capacity: number | null;
+  status: string;
+  sort_order: number | null;
+};
+
 export type BookingUnit = {
   id: string;
   title: string;

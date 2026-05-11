@@ -1,5 +1,4 @@
-import { notFound } from 'next/navigation';
-import { AdminPanel } from '@/src/components/admin/AdminPanel';
+import { notFound, redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,5 +13,5 @@ export default async function AdminEditListingPage({ params }: PageProps) {
     notFound();
   }
 
-  return <AdminPanel initialSection="listings" initialAction="edit" initialKind={kind} initialId={id} />;
+  redirect(kind === 'accommodation' ? `/admin/cazari/${id}` : `/admin/experiente/${id}`);
 }

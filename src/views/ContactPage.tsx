@@ -4,7 +4,16 @@ import { SectionHeading } from '../components/SectionHeading';
 import { ScrollReveal } from '../components/ScrollReveal';
 import type { I18nProps } from '../i18n/types';
 
-export function ContactPage({ t }: I18nProps) {
+type ContactPageProps = I18nProps & {
+  settings?: any;
+};
+
+export function ContactPage({ lang, t, settings }: ContactPageProps) {
+  const phones = settings?.phones?.length ? settings.phones : ['060588845'];
+  const emails = settings?.emails?.length ? settings.emails : ['gradinamarioarei@gmail.com'];
+  const address = settings?.address?.[lang] || t('contact.address_val');
+  const mapUrl = settings?.map_url || 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d1939.7998114901357!2d28.127696051050208!3d47.26903757367802!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x40cbaf0575e7cb31%3A0x79b8f18904674bdc!2sPensiunea%20Agroturistica%20Gradina%20Marioarei!5e1!3m2!1sen!2s!4v1772389410056!5m2!1sen!2s';
+
   return (
     <div className="pt-32 pb-20 min-h-screen">
       <div className="container-custom">
@@ -19,7 +28,7 @@ export function ContactPage({ t }: I18nProps) {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-forest-dark mb-2">{t('contact.address_label')}</h3>
-                  <p className="text-stone-dark">{t('contact.address_val')}</p>
+                  <p className="text-stone-dark">{address}</p>
                 </div>
               </div>
 
@@ -29,9 +38,13 @@ export function ContactPage({ t }: I18nProps) {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-forest-dark mb-2">{t('contact.phone_label')}</h3>
-                  <a href="tel:060588845" className="text-stone-dark hover:text-terracotta transition-colors">
-                    060588845
-                  </a>
+                  <div className="space-y-1">
+                    {phones.map((phone: string) => (
+                      <a key={phone} href={`tel:${phone}`} className="block text-stone-dark hover:text-terracotta transition-colors">
+                        {phone}
+                      </a>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -41,9 +54,13 @@ export function ContactPage({ t }: I18nProps) {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-forest-dark mb-2">{t('contact.email_label')}</h3>
-                  <a href="mailto:gradinamarioarei@gmail.com" className="text-stone-dark hover:text-terracotta transition-colors">
-                    gradinamarioarei@gmail.com
-                  </a>
+                  <div className="space-y-1">
+                    {emails.map((email: string) => (
+                      <a key={email} href={`mailto:${email}`} className="block text-stone-dark hover:text-terracotta transition-colors">
+                        {email}
+                      </a>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -52,7 +69,7 @@ export function ContactPage({ t }: I18nProps) {
           <ScrollReveal delay={0.2} width="100%">
             <div className="h-full min-h-[400px] rounded-xl overflow-hidden shadow-lg border border-stone-light/30">
               <iframe
-                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d1939.7998114901357!2d28.127696051050208!3d47.26903757367802!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x40cbaf0575e7cb31%3A0x79b8f18904674bdc!2sPensiunea%20Agroturistica%20Gradina%20Marioarei!5e1!3m2!1sen!2s!4v1772389410056!5m2!1sen!2s"
+                src={mapUrl}
                 width="600"
                 height="450"
                 style={{ border: 0 }}

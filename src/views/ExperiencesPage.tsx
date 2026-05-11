@@ -3,19 +3,37 @@ import { Sun, Moon, Coffee } from 'lucide-react';
 import { SectionHeading } from '../components/SectionHeading';
 import { ScrollReveal } from '../components/ScrollReveal';
 import type { I18nProps } from '../i18n/types';
+import type { Experience } from '@/src/lib/cms/types';
 
-export function ExperiencesPage({ t }: I18nProps) {
+type ExperiencesPageProps = I18nProps & {
+  experiences: Experience[];
+};
+
+export function ExperiencesPage({ t, experiences }: ExperiencesPageProps) {
   return (
     <div className="pt-32 pb-20 min-h-screen">
       <div className="container-custom">
         <SectionHeading title={t('experiences.title')} subtitle={t('experiences.subtitle')} />
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-20">
-          {t('experiences.items').map((item: any, idx: number) => (
+          {experiences.map((item, idx) => (
             <ScrollReveal key={idx} delay={idx * 0.1}>
               <div className="bg-white p-8 rounded-lg shadow-md border-t-4 border-forest h-full hover:-translate-y-1 transition-transform duration-300">
                 <h3 className="text-xl font-serif font-bold text-forest-dark mb-3">{item.title}</h3>
-                <p className="text-stone-dark leading-relaxed">{item.desc}</p>
+                <p className="text-stone-dark leading-relaxed">{item.description}</p>
+                {!!item.highlights.length && (
+                  <ul className="mt-5 space-y-2 text-sm text-stone-dark">
+                    {item.highlights.slice(0, 3).map((highlight) => (
+                      <li key={highlight}>• {highlight}</li>
+                    ))}
+                  </ul>
+                )}
+                {(item.price || item.location) && (
+                  <div className="mt-6 flex flex-wrap gap-2 text-xs font-bold uppercase tracking-wide text-terracotta">
+                    {item.price && <span>{item.price}</span>}
+                    {item.location && <span>{item.location}</span>}
+                  </div>
+                )}
               </div>
             </ScrollReveal>
           ))}

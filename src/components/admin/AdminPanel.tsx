@@ -10,7 +10,6 @@ import {
   ChevronRight,
   FileText,
   Home,
-  Image as ImageIcon,
   Languages,
   LogOut,
   Plus,
@@ -28,10 +27,11 @@ import { getBrowserSupabase } from '@/src/lib/supabase/client';
 import { getDefaultStaticTextRows } from '@/src/lib/cms/default-texts';
 
 type Lang = 'ro' | 'en' | 'ru';
-type Section = 'today' | 'listings' | 'translations' | 'media' | 'bookings' | 'settings' | 'members';
+type Section = 'today' | 'accommodations' | 'experiences' | 'translations' | 'bookings' | 'settings' | 'members';
 type ListingKind = 'accommodation' | 'experience';
 type AdminAction = 'list' | 'new' | 'edit';
 type EditorTab = 'data' | 'seo';
+type SettingsTab = 'contact' | 'about';
 
 const languages: Array<{ id: Lang; label: string }> = [
   { id: 'ro', label: 'Română' },
@@ -40,13 +40,21 @@ const languages: Array<{ id: Lang; label: string }> = [
 ];
 
 const navItems: Array<{ id: Section; label: string; icon: React.ElementType }> = [
-  { id: 'today', label: 'Today', icon: Home },
-  { id: 'listings', label: 'Listings', icon: BedDouble },
+  { id: 'today', label: 'Azi', icon: Home },
+  { id: 'accommodations', label: 'Cazări', icon: BedDouble },
+  { id: 'experiences', label: 'Experiențe', icon: Sparkles },
   { id: 'translations', label: 'Traduceri', icon: Languages },
-  { id: 'media', label: 'Media', icon: ImageIcon },
   { id: 'bookings', label: 'Rezervări', icon: CalendarDays },
   { id: 'settings', label: 'Setări', icon: Settings },
   { id: 'members', label: 'Echipă', icon: Users }
+];
+
+const dynamicTextPrefixes = [
+  'accommodation.vila_mare',
+  'accommodation.beci1',
+  'accommodation.beci2',
+  'experiences.items',
+  'discover.articles'
 ];
 
 const localized = { ro: '', en: '', ru: '' };
@@ -76,24 +84,30 @@ const emptyListing = {
   seo: emptySeo
 };
 
-function asLines(value: unknown) {
-  return Array.isArray(value) ? value.join('\n') : '';
-}
-
-function fromLines(value: string) {
-  return value
-    .split('\n')
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 function getLocalized(value: any, lang: Lang) {
   return value?.[lang] ?? value?.ro ?? '';
+}
+
+function slugify(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
 }
 
 function money(value: any, currency: string) {
   if (value === null || value === undefined || value === '') return '-';
   return `${value} ${currency || 'lei'}`;
+}
+
+function statusLabel(status: string | undefined, isActive?: boolean) {
+  const value = status || (isActive ? 'published' : 'draft');
+  if (value === 'published') return 'Publicat';
+  if (value === 'archived') return 'Arhivat';
+  return 'Ciornă';
 }
 
 function normalizeListing(row: any, kind: ListingKind) {
@@ -168,26 +182,23 @@ export function AdminPanel({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [search, setSearch] = useState('');
-  const [listingFilter, setListingFilter] = useState<'all' | ListingKind>('all');
   const [language, setLanguage] = useState<Lang>('ro');
   const [editorTab, setEditorTab] = useState<EditorTab>('data');
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('contact');
   const [accommodations, setAccommodations] = useState<any[]>([]);
   const [experiences, setExperiences] = useState<any[]>([]);
   const [listingDraft, setListingDraft] = useState<any>(normalizeListing(emptyListing, 'accommodation'));
   const [texts, setTexts] = useState<any[]>([]);
   const [editingCell, setEditingCell] = useState<{ key: string; lang: Lang } | null>(null);
-  const [media, setMedia] = useState<any[]>([]);
   const [bookings, setBookings] = useState<any[]>([]);
   const [members, setMembers] = useState<any[]>([]);
   const [memberDraft, setMemberDraft] = useState({ email: '', password: '', full_name: '', role: 'editor' });
   const [contactSettings, setContactSettings] = useState<any>({
-    phone: '',
-    email: '',
+    phones: [''],
+    emails: [''],
     address: { ...localized },
     map_url: '',
-    facebook: '',
-    instagram: '',
-    tiktok: ''
+    social_links: [] as Array<{ network: string; url: string }>
   });
   const [aboutSettings, setAboutSettings] = useState<any>({
     headline: { ...localized },
@@ -198,22 +209,33 @@ export function AdminPanel({
 
   const go = useCallback(
     (nextSection: Section, params: { action?: AdminAction; kind?: ListingKind; id?: string } = {}) => {
-      if (nextSection !== 'listings') {
-        router.push(`/admin/${nextSection}`);
+      if (nextSection === 'accommodations') {
+        if (params.action === 'new') {
+          router.push('/admin/cazari/new');
+          return;
+        }
+        if (params.action === 'edit' && params.id) {
+          router.push(`/admin/cazari/${params.id}`);
+          return;
+        }
+        router.push('/admin/cazari');
         return;
       }
 
-      if (params.action === 'new' && params.kind) {
-        router.push(`/admin/listings/new/${params.kind}`);
+      if (nextSection === 'experiences') {
+        if (params.action === 'new') {
+          router.push('/admin/experiente/new');
+          return;
+        }
+        if (params.action === 'edit' && params.id) {
+          router.push(`/admin/experiente/${params.id}`);
+          return;
+        }
+        router.push('/admin/experiente');
         return;
       }
 
-      if (params.action === 'edit' && params.kind && params.id) {
-        router.push(`/admin/listings/${params.kind}/${params.id}`);
-        return;
-      }
-
-      router.push('/admin/listings');
+      router.push(`/admin/${nextSection}`);
     },
     [router]
   );
@@ -235,11 +257,10 @@ export function AdminPanel({
     if (!supabase) return;
 
     setMessage('');
-    const [accommodationResult, experienceResult, textResult, mediaResult, bookingResult, contactResult, aboutResult] = await Promise.all([
+    const [accommodationResult, experienceResult, textResult, bookingResult, contactResult, aboutResult] = await Promise.all([
       supabase.from('accommodations').select('*').order('sort_order', { ascending: true }),
       supabase.from('experiences').select('*').order('sort_order', { ascending: true }),
       supabase.from('site_texts').select('*').order('key', { ascending: true }),
-      supabase.from('media_assets').select('*').order('created_at', { ascending: false }),
       supabase.from('bookings').select('*').order('created_at', { ascending: false }),
       supabase.from('app_settings').select('*').eq('key', 'contact').maybeSingle(),
       supabase.from('app_settings').select('*').eq('key', 'about').maybeSingle()
@@ -248,9 +269,19 @@ export function AdminPanel({
     if (accommodationResult.data) setAccommodations(accommodationResult.data);
     if (experienceResult.data) setExperiences(experienceResult.data);
     if (textResult.data) setTexts(textResult.data);
-    if (mediaResult.data) setMedia(mediaResult.data);
     if (bookingResult.data) setBookings(bookingResult.data);
-    if (contactResult.data?.value) setContactSettings((current: any) => ({ ...current, ...contactResult.data.value }));
+    if (contactResult.data?.value) {
+      setContactSettings((current: any) => {
+        const value = contactResult.data.value as any;
+        return {
+          ...current,
+          ...value,
+          phones: value.phones ?? (value.phone ? [value.phone] : current.phones),
+          emails: value.emails ?? (value.email ? [value.email] : current.emails),
+          social_links: value.social_links ?? ['facebook', 'instagram', 'tiktok'].filter((key) => value[key]).map((key) => ({ network: key, url: value[key] }))
+        };
+      });
+    }
     if (aboutResult.data?.value) setAboutSettings((current: any) => ({ ...current, ...aboutResult.data.value }));
     await loadMembers();
   }, [loadMembers, supabase]);
@@ -354,9 +385,10 @@ export function AdminPanel({
 
     setSaving(true);
     const isAccommodation = kind === 'accommodation';
+    const nextSlug = listingDraft.slug || slugify(listingDraft.title.ro || listingDraft.title.en || listingDraft.title.ru || 'item');
     const payload: any = isAccommodation
       ? {
-          slug: listingDraft.slug,
+          slug: nextSlug,
           title: listingDraft.title,
           description: listingDraft.description,
           location: listingDraft.location,
@@ -372,7 +404,7 @@ export function AdminPanel({
           seo: listingDraft.seo
         }
       : {
-          slug: listingDraft.slug,
+          slug: nextSlug,
           title: listingDraft.title,
           description: listingDraft.description,
           location: listingDraft.location,
@@ -395,7 +427,7 @@ export function AdminPanel({
     setMessage(error ? error.message : 'Salvat.');
     if (!error) {
       await loadAll();
-      go('listings');
+      go(isAccommodation ? 'accommodations' : 'experiences');
     }
   }
 
@@ -412,7 +444,9 @@ export function AdminPanel({
     if (!supabase || !session) return;
 
     setSaving(true);
-    const rows = getDefaultStaticTextRows().map((row) => ({ ...row, updated_by: session.user.id }));
+    const rows = getDefaultStaticTextRows()
+      .filter((row) => !dynamicTextPrefixes.some((prefix) => row.key.startsWith(prefix)))
+      .map((row) => ({ ...row, updated_by: session.user.id }));
     const { error } = await supabase.from('site_texts').upsert(rows);
     setSaving(false);
     setMessage(error ? error.message : 'Textele implicite au fost importate.');
@@ -485,22 +519,12 @@ export function AdminPanel({
     await loadMembers();
   }
 
-  const listings = useMemo(
-    () => [
-      ...accommodations.map((item) => ({ ...item, kind: 'accommodation' as const })),
-      ...experiences.map((item) => ({ ...item, kind: 'experience' as const }))
-    ],
-    [accommodations, experiences]
-  );
-
-  const filteredListings = listings.filter((item) => {
-    const matchesType = listingFilter === 'all' || item.kind === listingFilter;
-    const matchesSearch = JSON.stringify(item).toLowerCase().includes(search.toLowerCase());
-    return matchesType && matchesSearch;
-  });
-
-  const filteredTexts = texts.filter((item) => JSON.stringify(item).toLowerCase().includes(search.toLowerCase()));
-  const filteredMedia = media.filter((item) => JSON.stringify(item).toLowerCase().includes(search.toLowerCase()));
+  const currentListingKind: ListingKind = section === 'experiences' ? 'experience' : 'accommodation';
+  const currentListings = currentListingKind === 'accommodation' ? accommodations : experiences;
+  const filteredListings = currentListings.filter((item) => JSON.stringify(item).toLowerCase().includes(search.toLowerCase()));
+  const filteredTexts = texts
+    .filter((item) => !dynamicTextPrefixes.some((prefix) => item.key.startsWith(prefix)))
+    .filter((item) => JSON.stringify(item).toLowerCase().includes(search.toLowerCase()));
   const filteredBookings = bookings.filter((item) => JSON.stringify(item).toLowerCase().includes(search.toLowerCase()));
   const newBookings = bookings.filter((booking) => booking.status === 'new').length;
 
@@ -531,7 +555,7 @@ export function AdminPanel({
                 </div>
                 <span className="text-3xl font-extrabold">Grădina</span>
               </div>
-              <span className="rounded-full border border-stone-light px-4 py-1 text-xs font-bold uppercase tracking-[0.25em] text-stone-dark">Host dashboard</span>
+              <span className="rounded-full border border-stone-light px-4 py-1 text-xs font-bold uppercase tracking-[0.25em] text-stone-dark">Panou gazdă</span>
               <h1 className="mt-8 text-4xl font-extrabold tracking-tight text-forest-dark">Intră în contul host</h1>
               <p className="mt-4 text-stone-dark">Gestionezi listările, textele, rezervările și echipa direct dintr-un singur loc.</p>
             </div>
@@ -556,7 +580,7 @@ export function AdminPanel({
           <img src="/casa_mare_interior.jpg" alt="" className="h-full w-full object-cover opacity-65" />
           <div className="absolute inset-0 bg-forest-dark/30" />
           <div className="absolute bottom-16 left-16 max-w-xl text-white">
-            <p className="mb-6 text-xs font-bold uppercase tracking-[0.45em]">Moldova stays</p>
+            <p className="mb-6 text-xs font-bold uppercase tracking-[0.45em]">Sejururi Moldova</p>
             <h2 className="text-5xl font-extrabold leading-tight">Hosts, experiențe și calendar într-un dashboard care lucrează.</h2>
           </div>
         </div>
@@ -564,7 +588,7 @@ export function AdminPanel({
     );
   }
 
-  const isEditor = section === 'listings' && (action === 'new' || action === 'edit');
+  const isEditor = (section === 'accommodations' || section === 'experiences') && (action === 'new' || action === 'edit');
 
   return (
     <div className="min-h-screen bg-white text-forest-dark">
@@ -612,15 +636,11 @@ export function AdminPanel({
               <Search className="absolute left-4 top-3.5 h-5 w-5 text-stone" />
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Caută peste tot în secțiunea curentă..." className="w-full rounded-xl border border-stone-light bg-white py-3 pl-12 pr-4 outline-none focus:ring-2 focus:ring-forest" />
             </div>
-            {section === 'listings' && (
+            {(section === 'accommodations' || section === 'experiences') && (
               <div className="flex gap-2">
-                <button onClick={() => go('listings', { action: 'new', kind: 'accommodation' })} className="rounded-full bg-forest px-5 py-3 text-sm font-bold text-white">
+                <button onClick={() => go(section, { action: 'new', kind: currentListingKind })} className="rounded-full bg-forest px-5 py-3 text-sm font-bold text-white">
                   <Plus className="mr-2 inline h-4 w-4" />
-                  Add cazare
-                </button>
-                <button onClick={() => go('listings', { action: 'new', kind: 'experience' })} className="rounded-full border border-stone-light px-5 py-3 text-sm font-bold hover:bg-cream">
-                  <Sparkles className="mr-2 inline h-4 w-4" />
-                  Add experiență
+                  {section === 'accommodations' ? 'Adaugă cazare' : 'Adaugă experiență'}
                 </button>
               </div>
             )}
@@ -631,8 +651,8 @@ export function AdminPanel({
 
         {section === 'today' && (
           <section>
-            <p className="text-xs font-bold uppercase tracking-[0.35em] text-stone">Host workspace</p>
-            <h1 className="mt-3 text-4xl font-extrabold">Today</h1>
+            <p className="text-xs font-bold uppercase tracking-[0.35em] text-stone">Panou administrare</p>
+            <h1 className="mt-3 text-4xl font-extrabold">Azi</h1>
             <div className="mt-8 grid gap-4 md:grid-cols-4">
               <Metric title="Cazări" value={accommodations.length} />
               <Metric title="Experiențe" value={experiences.length} />
@@ -642,28 +662,16 @@ export function AdminPanel({
           </section>
         )}
 
-        {section === 'listings' && !isEditor && (
+        {(section === 'accommodations' || section === 'experiences') && !isEditor && (
           <section>
-            <p className="text-xs font-bold uppercase tracking-[0.35em] text-stone">Host workspace</p>
-            <h1 className="mt-3 text-4xl font-extrabold">Your listings</h1>
-            <p className="mt-3 text-stone-dark">Vezi toate experiențele și cazările într-un singur loc.</p>
-            <div className="mt-8 flex gap-2">
-              {[
-                ['all', 'All'],
-                ['accommodation', 'Homes'],
-                ['experience', 'Experiences']
-              ].map(([value, label]) => (
-                <button key={value} onClick={() => setListingFilter(value as any)} className={`rounded-full px-5 py-2 text-sm font-bold ${listingFilter === value ? 'bg-forest text-white' : 'border border-stone-light hover:bg-cream'}`}>
-                  {label}
-                </button>
-              ))}
-            </div>
+            <p className="text-xs font-bold uppercase tracking-[0.35em] text-stone">{section === 'accommodations' ? 'Cazări' : 'Experiențe'}</p>
+            <h1 className="mt-3 text-4xl font-extrabold">{section === 'accommodations' ? 'Lista de cazări' : 'Lista de experiențe'}</h1>
+            <p className="mt-3 text-stone-dark">{section === 'accommodations' ? 'Aici se editează camerele, vilele, prețurile, facilitățile și pozele afișate pe site.' : 'Aici se editează experiențele afișate pe pagina Experiențe.'}</p>
             <div className="mt-8 overflow-hidden rounded-[28px] border border-stone-light shadow-sm">
               <table className="w-full min-w-[860px] text-left">
                 <thead className="bg-cream/70 text-xs uppercase tracking-wide text-stone-dark">
                   <tr>
-                    <th className="px-6 py-4">Listing</th>
-                    <th className="px-6 py-4">Tip</th>
+                    <th className="px-6 py-4">Denumire</th>
                     <th className="px-6 py-4">Locație</th>
                     <th className="px-6 py-4">Preț</th>
                     <th className="px-6 py-4">Status</th>
@@ -672,9 +680,9 @@ export function AdminPanel({
                 </thead>
                 <tbody>
                   {filteredListings.map((item) => (
-                    <tr key={`${item.kind}-${item.id}`} className="border-t border-stone-light hover:bg-cream/40">
+                    <tr key={item.id} className="border-t border-stone-light hover:bg-cream/40">
                       <td className="px-6 py-5">
-                        <button onClick={() => go('listings', { action: 'edit', kind: item.kind, id: item.id })} className="flex items-center gap-4 text-left">
+                        <button onClick={() => go(section, { action: 'edit', kind: currentListingKind, id: item.id })} className="flex items-center gap-4 text-left">
                           <img src={item.images?.[0] || '/casamare.jpg'} alt="" className="h-14 w-14 rounded-xl object-cover" />
                           <span>
                             <span className="block font-bold">{getLocalized(item.title, 'ro') || item.slug}</span>
@@ -682,16 +690,15 @@ export function AdminPanel({
                           </span>
                         </button>
                       </td>
-                      <td className="px-6 py-5">{item.kind === 'accommodation' ? 'Cazare' : 'Experiență'}</td>
                       <td className="px-6 py-5">{getLocalized(item.location, 'ro') || '-'}</td>
-                      <td className="px-6 py-5">{money(item.kind === 'accommodation' ? item.price_per_night : item.price, item.currency)}</td>
+                      <td className="px-6 py-5">{money(currentListingKind === 'accommodation' ? item.price_per_night : item.price, item.currency)}</td>
                       <td className="px-6 py-5">
                         <span className={`rounded-full px-3 py-1 text-xs font-bold ${item.status === 'draft' || item.is_active === false ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
-                          {item.status || (item.is_active ? 'published' : 'draft')}
+                          {statusLabel(item.status, item.is_active)}
                         </span>
                       </td>
                       <td className="px-6 py-5 text-right">
-                        <button onClick={() => go('listings', { action: 'edit', kind: item.kind, id: item.id })} className="rounded-full border border-stone-light p-2 hover:bg-cream">
+                        <button onClick={() => go(section, { action: 'edit', kind: currentListingKind, id: item.id })} className="rounded-full border border-stone-light p-2 hover:bg-cream">
                           <ChevronRight className="h-4 w-4" />
                         </button>
                       </td>
@@ -703,9 +710,9 @@ export function AdminPanel({
           </section>
         )}
 
-        {section === 'listings' && isEditor && (
+        {(section === 'accommodations' || section === 'experiences') && isEditor && (
           <ListingEditor
-            kind={kind}
+            kind={currentListingKind}
             language={language}
             setLanguage={setLanguage}
             editorTab={editorTab}
@@ -713,10 +720,10 @@ export function AdminPanel({
             draft={listingDraft}
             setDraft={setListingDraft}
             saving={saving}
-            onBack={() => go('listings')}
+            onBack={() => go(section)}
             onSaveDraft={() => saveListing('draft')}
             onPublish={() => saveListing('published')}
-            onDelete={listingDraft.id ? () => deleteListing(listingDraft, kind) : undefined}
+            onDelete={listingDraft.id ? () => deleteListing(listingDraft, currentListingKind) : undefined}
             onUpload={attachListingImages}
           />
         )}
@@ -729,10 +736,6 @@ export function AdminPanel({
             onSave={saveTextCell}
             onSeed={seedTexts}
           />
-        )}
-
-        {section === 'media' && (
-          <MediaLibrary items={filteredMedia} onUpload={uploadFiles} />
         )}
 
         {section === 'bookings' && (
@@ -750,6 +753,8 @@ export function AdminPanel({
             onUpload={uploadFiles}
             onSaveContact={() => saveSettings('contact', contactSettings)}
             onSaveAbout={() => saveSettings('about', aboutSettings)}
+            settingsTab={settingsTab}
+            setSettingsTab={setSettingsTab}
           />
         )}
 
@@ -782,6 +787,43 @@ function LangTabs({ value, onChange }: { value: Lang; onChange: (lang: Lang) => 
   );
 }
 
+function ItemsEditor({ label, items, onChange, placeholder }: { label: string; items: string[]; onChange: (items: string[]) => void; placeholder: string }) {
+  function updateItem(index: number, value: string) {
+    onChange(items.map((item, itemIndex) => (itemIndex === index ? value : item)));
+  }
+
+  function addItem() {
+    onChange([...items, '']);
+  }
+
+  function removeItem(index: number) {
+    onChange(items.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-between gap-4">
+        <h3 className="text-sm font-bold">{label}</h3>
+        <button type="button" onClick={addItem} className="rounded-full border border-stone-light px-4 py-2 text-sm font-bold hover:bg-cream">
+          <Plus className="mr-2 inline h-4 w-4" />
+          Adaugă
+        </button>
+      </div>
+      <div className="space-y-3">
+        {items.map((item, index) => (
+          <div key={index} className="flex items-center gap-3">
+            <input value={item} onChange={(event) => updateItem(index, event.target.value)} className="admin-input" placeholder={placeholder} />
+            <button type="button" onClick={() => removeItem(index)} className="rounded-full bg-red-600 p-3 text-white">
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        ))}
+        {!items.length && <p className="rounded-2xl bg-cream p-4 text-sm text-stone-dark">Nu ai adăugat încă nimic.</p>}
+      </div>
+    </div>
+  );
+}
+
 function ListingEditor(props: {
   kind: ListingKind;
   language: Lang;
@@ -804,10 +846,10 @@ function ListingEditor(props: {
     setDraft((current: any) => ({ ...current, [field]: { ...current[field], [language]: value } }));
   }
 
-  function setCollection(value: string) {
+  function setCollection(items: string[]) {
     setDraft((current: any) => ({
       ...current,
-      [collectionKey]: { ...current[collectionKey], [language]: fromLines(value) }
+      [collectionKey]: { ...current[collectionKey], [language]: items }
     }));
   }
 
@@ -830,53 +872,48 @@ function ListingEditor(props: {
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.35em] text-stone">{kind === 'accommodation' ? 'Cazare' : 'Experiență'}</p>
-          <h1 className="mt-2 text-4xl font-extrabold">{draft.id ? 'Edit listing' : 'Create listing'}</h1>
+          <h1 className="mt-2 text-4xl font-extrabold">{draft.id ? (kind === 'accommodation' ? 'Editează cazarea' : 'Editează experiența') : (kind === 'accommodation' ? 'Adaugă cazare' : 'Adaugă experiență')}</h1>
         </div>
         <div className="flex gap-2">
           {onDelete && (
             <button onClick={onDelete} className="rounded-full border border-red-200 px-5 py-3 text-sm font-bold text-red-700 hover:bg-red-50">
               <Trash2 className="mr-2 inline h-4 w-4" />
-              Delete
+              Șterge
             </button>
           )}
-          <button onClick={onSaveDraft} disabled={saving} className="rounded-full border border-stone-light px-5 py-3 text-sm font-bold hover:bg-cream">Save as draft</button>
-          <button onClick={onPublish} disabled={saving} className="rounded-full bg-forest px-5 py-3 text-sm font-bold text-white">Publish</button>
+          <button onClick={onSaveDraft} disabled={saving} className="rounded-full border border-stone-light px-5 py-3 text-sm font-bold hover:bg-cream">Salvează draft</button>
+          <button onClick={onPublish} disabled={saving} className="rounded-full bg-forest px-5 py-3 text-sm font-bold text-white">Publică</button>
         </div>
       </div>
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <button onClick={() => setEditorTab('data')} className={`rounded-xl px-4 py-3 text-sm font-bold ${editorTab === 'data' ? 'bg-cream shadow-sm' : 'hover:bg-cream'}`}>
           <BedDouble className="mr-2 inline h-4 w-4" />
-          Data
+          Date
         </button>
         <button onClick={() => setEditorTab('seo')} className={`rounded-xl px-4 py-3 text-sm font-bold ${editorTab === 'seo' ? 'bg-cream shadow-sm' : 'hover:bg-cream'}`}>
           <FileText className="mr-2 inline h-4 w-4" />
           SEO
         </button>
-        <div className="ml-0 md:ml-4">
-          <LangTabs value={language} onChange={setLanguage} />
-        </div>
       </div>
 
       <div className="space-y-6">
         {editorTab === 'data' && (
           <>
-            <Panel title="Basic information">
+            <Panel title="Date principale">
+              <LangTabs value={language} onChange={setLanguage} />
               <div className="grid gap-5 md:grid-cols-2">
                 <Field label="Titlu">
-                  <input value={draft.title[language]} onChange={(event) => setLocalized('title', event.target.value)} className="admin-input" placeholder="Enter name" />
-                </Field>
-                <Field label="Slug">
-                  <input value={draft.slug} onChange={(event) => setDraft((current: any) => ({ ...current, slug: event.target.value }))} className="admin-input" placeholder="slug-url" />
+                  <input value={draft.title[language]} onChange={(event) => setLocalized('title', event.target.value)} className="admin-input" placeholder="Denumire" />
                 </Field>
                 <Field label="Locație">
                   <input value={draft.location[language]} onChange={(event) => setLocalized('location', event.target.value)} className="admin-input" placeholder="Vălcineț, Călărași" />
                 </Field>
                 <Field label="Status">
                   <select value={draft.status} onChange={(event) => setDraft((current: any) => ({ ...current, status: event.target.value }))} className="admin-input">
-                    <option value="draft">Draft</option>
-                    <option value="published">Published</option>
-                    <option value="archived">Archived</option>
+                    <option value="draft">Ciornă</option>
+                    <option value="published">Publicat</option>
+                    <option value="archived">Arhivat</option>
                   </select>
                 </Field>
               </div>
@@ -885,7 +922,8 @@ function ListingEditor(props: {
               </Field>
             </Panel>
 
-            <Panel title={kind === 'accommodation' ? 'Pricing și facilități' : 'Pricing și highlights'}>
+            <Panel title={kind === 'accommodation' ? 'Preț și facilități' : 'Preț și detalii'}>
+              <LangTabs value={language} onChange={setLanguage} />
               <div className="grid gap-5 md:grid-cols-4">
                 <Field label="Preț">
                   <input value={kind === 'accommodation' ? draft.price_per_night : draft.price} onChange={(event) => setDraft((current: any) => ({ ...current, [kind === 'accommodation' ? 'price_per_night' : 'price']: event.target.value }))} type="number" className="admin-input" />
@@ -907,12 +945,15 @@ function ListingEditor(props: {
                   <input value={draft.capacity} onChange={(event) => setDraft((current: any) => ({ ...current, capacity: event.target.value }))} type="number" className="admin-input" />
                 </Field>
               </div>
-              <Field label={kind === 'accommodation' ? 'Facilități, una pe linie' : 'Highlights, unul pe linie'}>
-                <textarea value={asLines(draft[collectionKey][language])} onChange={(event) => setCollection(event.target.value)} rows={6} className="admin-input" />
-              </Field>
+              <ItemsEditor
+                label={kind === 'accommodation' ? 'Facilități' : 'Puncte importante'}
+                items={draft[collectionKey][language] ?? []}
+                onChange={setCollection}
+                placeholder={kind === 'accommodation' ? 'Ex: Wi-Fi gratuit' : 'Ex: Cină la grătar'}
+              />
             </Panel>
 
-            <Panel title="Amenities și media">
+            <Panel title="Poze">
               <div className="grid gap-5 md:grid-cols-[1fr_280px]">
                 <label className="flex min-h-32 cursor-pointer items-center justify-center rounded-2xl border-2 border-dashed border-stone-light p-6 hover:bg-cream">
                   <input type="file" multiple className="hidden" onChange={(event) => onUpload(event.target.files)} />
@@ -940,15 +981,16 @@ function ListingEditor(props: {
         )}
 
         {editorTab === 'seo' && (
-          <Panel title="SEO">
+            <Panel title="SEO">
+              <LangTabs value={language} onChange={setLanguage} />
             <div className="grid gap-5">
-              <Field label="SEO title">
+              <Field label="Titlu SEO">
                 <input value={draft.seo[language].title} onChange={(event) => setSeo('title', event.target.value)} className="admin-input" />
               </Field>
-              <Field label="SEO description">
+              <Field label="Descriere SEO">
                 <textarea value={draft.seo[language].description} onChange={(event) => setSeo('description', event.target.value)} rows={5} className="admin-input" />
               </Field>
-              <Field label="SEO keywords">
+              <Field label="Cuvinte cheie SEO">
                 <input value={draft.seo[language].keywords} onChange={(event) => setSeo('keywords', event.target.value)} className="admin-input" placeholder="cazare, pensiune, Vălcineț" />
               </Field>
             </div>
@@ -990,8 +1032,9 @@ function TranslationsTable(props: {
     <section>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.35em] text-stone">Frontend</p>
-          <h1 className="mt-2 text-4xl font-extrabold">Translations</h1>
+          <p className="text-xs font-bold uppercase tracking-[0.35em] text-stone">Texte statice</p>
+          <h1 className="mt-2 text-4xl font-extrabold">Traduceri</h1>
+          <p className="mt-3 text-stone-dark">Editează doar textele statice. Cazările și experiențele se traduc în paginile lor dedicate.</p>
         </div>
         <button onClick={onSeed} className="rounded-full bg-yellow-400 px-5 py-3 text-sm font-bold text-forest-dark">Importă cheile implicite</button>
       </div>
@@ -999,30 +1042,21 @@ function TranslationsTable(props: {
         <table className="w-full min-w-[1000px] text-left">
           <thead className="bg-cream/80 text-xs uppercase tracking-wide text-stone-dark">
             <tr>
-              <th className="px-5 py-4">Type</th>
-              <th className="px-5 py-4">Group/Model</th>
-              <th className="px-5 py-4">Section/ID</th>
-              <th className="px-5 py-4">Key/Column</th>
-              <th className="px-5 py-4">Value EN</th>
-              <th className="px-5 py-4">Value RU</th>
-              <th className="px-5 py-4">Value RO</th>
+              <th className="px-5 py-4">Cheie</th>
+              <th className="px-5 py-4">Română</th>
+              <th className="px-5 py-4">English</th>
+              <th className="px-5 py-4">Русский</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
-              const parts = row.key.split('.');
-              return (
-                <tr key={row.key} className="border-t border-stone-light hover:bg-cream/30">
-                  <td className="px-5 py-5">Static</td>
-                  <td className="px-5 py-5">frontend</td>
-                  <td className="px-5 py-5">{parts[0] ?? '-'}</td>
-                  <td className="px-5 py-5 font-mono text-sm">{parts.slice(1).join('.') || row.key}</td>
-                  {(['en', 'ru', 'ro'] as Lang[]).map((lang) => (
-                    <EditableTranslationCell key={lang} row={row} lang={lang} editing={Boolean(editingCell && editingCell.key === row.key && editingCell.lang === lang)} onEdit={() => setEditingCell({ key: row.key, lang })} onDone={() => setEditingCell(null)} onSave={onSave} />
-                  ))}
-                </tr>
-              );
-            })}
+            {rows.map((row) => (
+              <tr key={row.key} className="border-t border-stone-light hover:bg-cream/30">
+                <td className="px-5 py-5 font-mono text-sm">{row.key}</td>
+                {(['ro', 'en', 'ru'] as Lang[]).map((lang) => (
+                  <EditableTranslationCell key={lang} row={row} lang={lang} editing={Boolean(editingCell && editingCell.key === row.key && editingCell.lang === lang)} onEdit={() => setEditingCell({ key: row.key, lang })} onDone={() => setEditingCell(null)} onSave={onSave} />
+                ))}
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -1054,30 +1088,6 @@ function EditableTranslationCell({ row, lang, editing, onEdit, onDone, onSave }:
     <td onClick={onEdit} className="cursor-text px-5 py-5 align-top hover:bg-yellow-50">
       <div className="line-clamp-3 whitespace-pre-wrap">{value}</div>
     </td>
-  );
-}
-
-function MediaLibrary({ items, onUpload }: { items: any[]; onUpload: (files: FileList | null) => void }) {
-  return (
-    <section>
-      <h1 className="text-4xl font-extrabold">Media</h1>
-      <label className="mt-8 flex cursor-pointer items-center justify-center rounded-[28px] border-2 border-dashed border-stone-light p-10 hover:bg-cream">
-        <input type="file" multiple className="hidden" onChange={(event) => onUpload(event.target.files)} />
-        <span className="text-center font-bold">
-          <Upload className="mx-auto mb-2 h-8 w-8" />
-          Încarcă fișiere din calculator
-        </span>
-      </label>
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {items.map((item) => (
-          <div key={item.id} className="rounded-2xl border border-stone-light p-3">
-            {item.mime_type?.startsWith('image/') ? <img src={item.url} alt={item.title} className="h-44 w-full rounded-xl object-cover" /> : <div className="flex h-44 items-center justify-center rounded-xl bg-cream"><FileText /></div>}
-            <p className="mt-3 truncate text-sm font-bold">{item.title}</p>
-            <input readOnly value={item.url} className="mt-2 w-full rounded-lg border border-stone-light px-2 py-2 text-xs" />
-          </div>
-        ))}
-      </div>
-    </section>
   );
 }
 
@@ -1113,6 +1123,8 @@ function BookingsTable({ rows, onStatus }: { rows: any[]; onStatus: (id: string,
 function SettingsPage(props: {
   language: Lang;
   setLanguage: (lang: Lang) => void;
+  settingsTab: SettingsTab;
+  setSettingsTab: (tab: SettingsTab) => void;
   contact: any;
   setContact: React.Dispatch<React.SetStateAction<any>>;
   about: any;
@@ -1121,40 +1133,79 @@ function SettingsPage(props: {
   onSaveContact: () => void;
   onSaveAbout: () => void;
 }) {
-  const { language, setLanguage, contact, setContact, about, setAbout, onUpload, onSaveContact, onSaveAbout } = props;
+  const { language, setLanguage, settingsTab, setSettingsTab, contact, setContact, about, setAbout, onUpload, onSaveContact, onSaveAbout } = props;
+
+  function updateSocial(index: number, key: 'network' | 'url', value: string) {
+    setContact((current: any) => ({
+      ...current,
+      social_links: current.social_links.map((item: any, itemIndex: number) => (itemIndex === index ? { ...item, [key]: value } : item))
+    }));
+  }
 
   return (
     <section>
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.35em] text-stone">Settings</p>
+          <p className="text-xs font-bold uppercase tracking-[0.35em] text-stone">Setări</p>
           <h1 className="mt-2 text-4xl font-extrabold">Setări site</h1>
         </div>
-        <LangTabs value={language} onChange={setLanguage} />
       </div>
-      <div className="grid gap-6 lg:grid-cols-2">
+
+      <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
+        <aside className="rounded-[28px] border border-stone-light p-3 shadow-sm">
+          <button onClick={() => setSettingsTab('contact')} className={`mb-2 w-full rounded-2xl px-4 py-3 text-left text-sm font-bold ${settingsTab === 'contact' ? 'bg-forest text-white' : 'hover:bg-cream'}`}>
+            Contact
+          </button>
+          <button onClick={() => setSettingsTab('about')} className={`w-full rounded-2xl px-4 py-3 text-left text-sm font-bold ${settingsTab === 'about' ? 'bg-forest text-white' : 'hover:bg-cream'}`}>
+            Despre noi
+          </button>
+        </aside>
+
+        {settingsTab === 'contact' && (
         <Panel title="Contact">
-          <Field label="Telefon">
-            <input value={contact.phone} onChange={(event) => setContact((current: any) => ({ ...current, phone: event.target.value }))} className="admin-input" />
-          </Field>
-          <Field label="Email">
-            <input value={contact.email} onChange={(event) => setContact((current: any) => ({ ...current, email: event.target.value }))} className="admin-input" />
-          </Field>
+          <LangTabs value={language} onChange={setLanguage} />
+          <ItemsEditor label="Telefoane" items={contact.phones ?? []} onChange={(items) => setContact((current: any) => ({ ...current, phones: items }))} placeholder="Ex: 060588845" />
+          <ItemsEditor label="Emailuri" items={contact.emails ?? []} onChange={(items) => setContact((current: any) => ({ ...current, emails: items }))} placeholder="Ex: contact@site.md" />
           <Field label="Adresă">
             <input value={contact.address?.[language] ?? ''} onChange={(event) => setContact((current: any) => ({ ...current, address: { ...current.address, [language]: event.target.value } }))} className="admin-input" />
           </Field>
           <Field label="Google Map URL">
             <input value={contact.map_url} onChange={(event) => setContact((current: any) => ({ ...current, map_url: event.target.value }))} className="admin-input" />
           </Field>
-          <div className="grid gap-4 md:grid-cols-3">
-            <Field label="Facebook"><input value={contact.facebook} onChange={(event) => setContact((current: any) => ({ ...current, facebook: event.target.value }))} className="admin-input" /></Field>
-            <Field label="Instagram"><input value={contact.instagram} onChange={(event) => setContact((current: any) => ({ ...current, instagram: event.target.value }))} className="admin-input" /></Field>
-            <Field label="TikTok"><input value={contact.tiktok} onChange={(event) => setContact((current: any) => ({ ...current, tiktok: event.target.value }))} className="admin-input" /></Field>
+          <div>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-bold">Rețele sociale</h3>
+              <button onClick={() => setContact((current: any) => ({ ...current, social_links: [...(current.social_links ?? []), { network: 'facebook', url: '' }] }))} className="rounded-full border border-stone-light px-4 py-2 text-sm font-bold hover:bg-cream">
+                <Plus className="mr-2 inline h-4 w-4" />
+                Adaugă
+              </button>
+            </div>
+            <div className="space-y-3">
+              {(contact.social_links ?? []).map((item: any, index: number) => (
+                <div key={index} className="grid gap-3 md:grid-cols-[220px_1fr_auto]">
+                  <select value={item.network} onChange={(event) => updateSocial(index, 'network', event.target.value)} className="admin-input">
+                    <option value="facebook">Facebook</option>
+                    <option value="instagram">Instagram</option>
+                    <option value="tiktok">TikTok</option>
+                    <option value="youtube">YouTube</option>
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="telegram">Telegram</option>
+                  </select>
+                  <input value={item.url} onChange={(event) => updateSocial(index, 'url', event.target.value)} className="admin-input" placeholder="https://..." />
+                  <button onClick={() => setContact((current: any) => ({ ...current, social_links: current.social_links.filter((_: any, itemIndex: number) => itemIndex !== index) }))} className="rounded-full bg-red-600 p-3 text-white">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
           <button onClick={onSaveContact} className="rounded-full bg-forest px-5 py-3 text-sm font-bold text-white"><Save className="mr-2 inline h-4 w-4" /> Salvează contact</button>
         </Panel>
+        )}
 
+        {settingsTab === 'about' && (
         <Panel title="Pagina Despre Noi">
+          <LangTabs value={language} onChange={setLanguage} />
           <Field label="Titlu">
             <input value={about.headline?.[language] ?? ''} onChange={(event) => setAbout((current: any) => ({ ...current, headline: { ...current.headline, [language]: event.target.value } }))} className="admin-input" />
           </Field>
@@ -1174,6 +1225,7 @@ function SettingsPage(props: {
           {about.image && <img src={about.image} alt="" className="h-48 rounded-2xl object-cover" />}
           <button onClick={onSaveAbout} className="rounded-full bg-forest px-5 py-3 text-sm font-bold text-white"><Save className="mr-2 inline h-4 w-4" /> Salvează Despre Noi</button>
         </Panel>
+        )}
       </div>
     </section>
   );

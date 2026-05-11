@@ -3,7 +3,7 @@ import { ContactPage } from '@/src/views/ContactPage';
 import { notFound } from 'next/navigation';
 import { isLanguage } from '@/src/i18n/server';
 import { buildPageMetadata } from '@/src/seo/metadata';
-import { createCmsTranslator } from '@/src/lib/cms/data';
+import { createCmsTranslator, getSiteSettings } from '@/src/lib/cms/data';
 
 type PageProps = {
   params: Promise<{ lang: string }>;
@@ -23,5 +23,6 @@ export default async function ContactRoute({ params }: PageProps) {
     notFound();
   }
   const t = await createCmsTranslator(lang);
-  return <ContactPage lang={lang} t={t} />;
+  const settings = await getSiteSettings();
+  return <ContactPage lang={lang} t={t} settings={(settings as any).contact} />;
 }

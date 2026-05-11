@@ -3,7 +3,7 @@ import { ExperiencesPage } from '@/src/views/ExperiencesPage';
 import { notFound } from 'next/navigation';
 import { isLanguage } from '@/src/i18n/server';
 import { buildPageMetadata } from '@/src/seo/metadata';
-import { createCmsTranslator } from '@/src/lib/cms/data';
+import { createCmsTranslator, getExperiences } from '@/src/lib/cms/data';
 
 type PageProps = {
   params: Promise<{ lang: string }>;
@@ -23,5 +23,6 @@ export default async function ExperiencesRoute({ params }: PageProps) {
     notFound();
   }
   const t = await createCmsTranslator(lang);
-  return <ExperiencesPage lang={lang} t={t} />;
+  const experiences = await getExperiences(lang);
+  return <ExperiencesPage lang={lang} t={t} experiences={experiences} />;
 }
