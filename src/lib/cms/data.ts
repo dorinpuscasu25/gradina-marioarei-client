@@ -178,7 +178,7 @@ export async function getSiteSettings() {
     return {};
   }
 
-  const { data, error } = await supabase.from('app_settings').select('*').in('key', ['contact', 'about']);
+  const { data, error } = await supabase.from('app_settings').select('*').in('key', ['contact', 'about', 'home', 'discover']);
 
   if (error || !data) {
     return {};

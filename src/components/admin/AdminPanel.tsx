@@ -31,7 +31,7 @@ type Section = 'today' | 'accommodations' | 'experiences' | 'translations' | 'bo
 type ListingKind = 'accommodation' | 'experience';
 type AdminAction = 'list' | 'new' | 'edit';
 type EditorTab = 'data' | 'seo';
-type SettingsTab = 'contact' | 'about';
+type SettingsTab = 'home' | 'gallery' | 'discover' | 'contact' | 'about';
 
 const languages: Array<{ id: Lang; label: string }> = [
   { id: 'ro', label: 'Română' },
@@ -101,6 +101,13 @@ function slugify(value: string) {
 function money(value: any, currency: string) {
   if (value === null || value === undefined || value === '') return '-';
   return `${value} ${currency || 'lei'}`;
+}
+
+function dateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function statusLabel(status: string | undefined, isActive?: boolean) {
@@ -191,6 +198,14 @@ export function AdminPanel({
   const [texts, setTexts] = useState<any[]>([]);
   const [editingCell, setEditingCell] = useState<{ key: string; lang: Lang } | null>(null);
   const [bookings, setBookings] = useState<any[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
+  const [bookingView, setBookingView] = useState<'list' | 'calendar'>('list');
+  const [manualEventDraft, setManualEventDraft] = useState({
+    title: '',
+    starts_at: '',
+    ends_at: '',
+    notes: ''
+  });
   const [members, setMembers] = useState<any[]>([]);
   const [memberDraft, setMemberDraft] = useState({ email: '', password: '', full_name: '', role: 'editor' });
   const [contactSettings, setContactSettings] = useState<any>({
@@ -205,6 +220,27 @@ export function AdminPanel({
     story: { ...localized },
     mission: { ...localized },
     image: ''
+  });
+  const [homeSettings, setHomeSettings] = useState<any>({
+    hero: {
+      badge: { ...localized },
+      title: { ...localized },
+      subtitle: { ...localized },
+      primaryLabel: { ...localized },
+      secondaryLabel: { ...localized },
+      secondaryPhone: '',
+      images: [] as string[]
+    },
+    gallery: [] as string[]
+  });
+  const [discoverSettings, setDiscoverSettings] = useState<any>({
+    title: { ...localized },
+    subtitle: { ...localized },
+    items: [] as any[],
+    images: [] as string[],
+    legendTitle: { ...localized },
+    legendText: { ...localized },
+    legendLabel: { ...localized }
   });
 
   const go = useCallback(
@@ -257,19 +293,23 @@ export function AdminPanel({
     if (!supabase) return;
 
     setMessage('');
-    const [accommodationResult, experienceResult, textResult, bookingResult, contactResult, aboutResult] = await Promise.all([
+    const [accommodationResult, experienceResult, textResult, bookingResult, eventResult, contactResult, aboutResult, homeResult, discoverResult] = await Promise.all([
       supabase.from('accommodations').select('*').order('sort_order', { ascending: true }),
       supabase.from('experiences').select('*').order('sort_order', { ascending: true }),
       supabase.from('site_texts').select('*').order('key', { ascending: true }),
       supabase.from('bookings').select('*').order('created_at', { ascending: false }),
+      supabase.from('calendar_events').select('*').order('starts_at', { ascending: true }),
       supabase.from('app_settings').select('*').eq('key', 'contact').maybeSingle(),
-      supabase.from('app_settings').select('*').eq('key', 'about').maybeSingle()
+      supabase.from('app_settings').select('*').eq('key', 'about').maybeSingle(),
+      supabase.from('app_settings').select('*').eq('key', 'home').maybeSingle(),
+      supabase.from('app_settings').select('*').eq('key', 'discover').maybeSingle()
     ]);
 
     if (accommodationResult.data) setAccommodations(accommodationResult.data);
     if (experienceResult.data) setExperiences(experienceResult.data);
     if (textResult.data) setTexts(textResult.data);
     if (bookingResult.data) setBookings(bookingResult.data);
+    if (eventResult.data) setCalendarEvents(eventResult.data);
     if (contactResult.data?.value) {
       setContactSettings((current: any) => {
         const value = contactResult.data.value as any;
@@ -283,6 +323,8 @@ export function AdminPanel({
       });
     }
     if (aboutResult.data?.value) setAboutSettings((current: any) => ({ ...current, ...aboutResult.data.value }));
+    if (homeResult.data?.value) setHomeSettings((current: any) => ({ ...current, ...homeResult.data.value }));
+    if (discoverResult.data?.value) setDiscoverSettings((current: any) => ({ ...current, ...discoverResult.data.value }));
     await loadMembers();
   }, [loadMembers, supabase]);
 
@@ -469,7 +511,7 @@ export function AdminPanel({
     if (error) setMessage(error.message);
   }
 
-  async function saveSettings(key: 'contact' | 'about', value: any) {
+  async function saveSettings(key: 'contact' | 'about' | 'home' | 'discover', value: any) {
     if (!supabase || !session) return;
 
     setSaving(true);
@@ -482,6 +524,34 @@ export function AdminPanel({
     if (!supabase) return;
     const { error } = await supabase.from('bookings').update({ status }).eq('id', bookingId);
     setMessage(error ? error.message : 'Rezervarea a fost actualizată.');
+    await loadAll();
+  }
+
+  async function createManualEvent(event: React.FormEvent) {
+    event.preventDefault();
+    if (!supabase || !session) return;
+
+    setSaving(true);
+    const { error } = await supabase.from('calendar_events').insert({
+      title: manualEventDraft.title,
+      starts_at: manualEventDraft.starts_at,
+      ends_at: manualEventDraft.ends_at || manualEventDraft.starts_at,
+      notes: manualEventDraft.notes,
+      event_type: 'manual',
+      created_by: session.user.id
+    });
+    setSaving(false);
+    setMessage(error ? error.message : 'Evenimentul a fost adăugat în calendar.');
+    if (!error) {
+      setManualEventDraft({ title: '', starts_at: '', ends_at: '', notes: '' });
+      await loadAll();
+    }
+  }
+
+  async function deleteManualEvent(eventId: string) {
+    if (!supabase || !confirm('Ștergi evenimentul din calendar?')) return;
+    const { error } = await supabase.from('calendar_events').delete().eq('id', eventId);
+    setMessage(error ? error.message : 'Eveniment șters.');
     await loadAll();
   }
 
@@ -739,7 +809,17 @@ export function AdminPanel({
         )}
 
         {section === 'bookings' && (
-          <BookingsTable rows={filteredBookings} onStatus={updateBookingStatus} />
+          <BookingsTable
+            rows={filteredBookings}
+            events={calendarEvents}
+            view={bookingView}
+            setView={setBookingView}
+            manualEventDraft={manualEventDraft}
+            setManualEventDraft={setManualEventDraft}
+            onCreateEvent={createManualEvent}
+            onDeleteEvent={deleteManualEvent}
+            onStatus={updateBookingStatus}
+          />
         )}
 
         {section === 'settings' && (
@@ -750,9 +830,15 @@ export function AdminPanel({
             setContact={setContactSettings}
             about={aboutSettings}
             setAbout={setAboutSettings}
+            home={homeSettings}
+            setHome={setHomeSettings}
+            discover={discoverSettings}
+            setDiscover={setDiscoverSettings}
             onUpload={uploadFiles}
             onSaveContact={() => saveSettings('contact', contactSettings)}
             onSaveAbout={() => saveSettings('about', aboutSettings)}
+            onSaveHome={() => saveSettings('home', homeSettings)}
+            onSaveDiscover={() => saveSettings('discover', discoverSettings)}
             settingsTab={settingsTab}
             setSettingsTab={setSettingsTab}
           />
@@ -819,6 +905,49 @@ function ItemsEditor({ label, items, onChange, placeholder }: { label: string; i
           </div>
         ))}
         {!items.length && <p className="rounded-2xl bg-cream p-4 text-sm text-stone-dark">Nu ai adăugat încă nimic.</p>}
+      </div>
+    </div>
+  );
+}
+
+function ImageListEditor({
+  label,
+  images,
+  onChange,
+  onUpload
+}: {
+  label: string;
+  images: string[];
+  onChange: (images: string[]) => void;
+  onUpload: (files: FileList | null) => Promise<string[]>;
+}) {
+  async function handleUpload(files: FileList | null) {
+    const urls = await onUpload(files);
+    if (urls.length) {
+      onChange([...(images ?? []), ...urls]);
+    }
+  }
+
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-between gap-4">
+        <h3 className="text-sm font-bold">{label}</h3>
+        <label className="cursor-pointer rounded-full border border-stone-light px-4 py-2 text-sm font-bold hover:bg-cream">
+          <input type="file" multiple className="hidden" onChange={(event) => handleUpload(event.target.files)} />
+          <Upload className="mr-2 inline h-4 w-4" />
+          Încarcă poze
+        </label>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {(images ?? []).map((image, index) => (
+          <div key={`${image}-${index}`} className="relative overflow-hidden rounded-2xl border border-stone-light">
+            <img src={image} alt="" className="h-40 w-full object-cover" />
+            <button type="button" onClick={() => onChange(images.filter((_, itemIndex) => itemIndex !== index))} className="absolute right-2 top-2 rounded-full bg-white p-2 text-red-600 shadow">
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        ))}
+        {!images?.length && <p className="rounded-2xl bg-cream p-4 text-sm text-stone-dark">Nu ai încă poze aici.</p>}
       </div>
     </div>
   );
@@ -1091,31 +1220,166 @@ function EditableTranslationCell({ row, lang, editing, onEdit, onDone, onSave }:
   );
 }
 
-function BookingsTable({ rows, onStatus }: { rows: any[]; onStatus: (id: string, status: string) => void }) {
+function BookingsTable({
+  rows,
+  events,
+  view,
+  setView,
+  manualEventDraft,
+  setManualEventDraft,
+  onCreateEvent,
+  onDeleteEvent,
+  onStatus
+}: {
+  rows: any[];
+  events: any[];
+  view: 'list' | 'calendar';
+  setView: (view: 'list' | 'calendar') => void;
+  manualEventDraft: any;
+  setManualEventDraft: (draft: any) => void;
+  onCreateEvent: (event: React.FormEvent) => void;
+  onDeleteEvent: (id: string) => void;
+  onStatus: (id: string, status: string) => void;
+}) {
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const startOffset = monthStart.getDay();
+  const calendarStart = new Date(monthStart);
+  calendarStart.setDate(monthStart.getDate() - startOffset);
+  const days = Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(calendarStart);
+    date.setDate(calendarStart.getDate() + index);
+    return date;
+  });
+  const calendarItems = [
+    ...rows.map((booking) => ({
+      id: `booking-${booking.id}`,
+      title: booking.full_name,
+      date: booking.checkin,
+      label: 'Rezervare',
+      color: '#173f35'
+    })),
+    ...events.map((event) => ({
+      id: event.id,
+      title: event.title,
+      date: event.starts_at?.slice(0, 10),
+      label: 'Manual',
+      color: event.color || '#b87333',
+      manual: true
+    }))
+  ];
+
   return (
     <section>
-      <h1 className="text-4xl font-extrabold">Rezervări</h1>
-      <div className="mt-8 space-y-4">
-        {rows.map((booking) => (
-          <div key={booking.id} className="rounded-2xl border border-stone-light p-5">
-            <div className="flex flex-col gap-4 md:flex-row md:justify-between">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wider text-terracotta">{new Date(booking.created_at).toLocaleString('ro-MD')}</p>
-                <h3 className="mt-1 text-xl font-extrabold">{booking.full_name}</h3>
-                <p>{booking.checkin} - {booking.checkout}, {booking.guests} oaspeți</p>
-                <p>{booking.phone} · {booking.email}</p>
-                {booking.notes && <p className="mt-3 rounded-xl bg-cream p-3">{booking.notes}</p>}
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.35em] text-stone">Disponibilitate</p>
+          <h1 className="mt-2 text-4xl font-extrabold">Rezervări și calendar</h1>
+          <p className="mt-3 text-stone-dark">Confirmi rezervările, vezi calendarul și poți adăuga blocări/evenimente manuale.</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setView('list')} className={`rounded-full px-5 py-3 text-sm font-bold ${view === 'list' ? 'bg-forest text-white' : 'border border-stone-light'}`}>Listă</button>
+          <button onClick={() => setView('calendar')} className={`rounded-full px-5 py-3 text-sm font-bold ${view === 'calendar' ? 'bg-forest text-white' : 'border border-stone-light'}`}>Calendar</button>
+        </div>
+      </div>
+
+      {view === 'list' && <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_360px]">
+        <div className="space-y-4">
+          {rows.map((booking) => (
+            <div key={booking.id} className="rounded-2xl border border-stone-light p-5">
+              <div className="flex flex-col gap-4 md:flex-row md:justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-terracotta">{new Date(booking.created_at).toLocaleString('ro-MD')}</p>
+                  <h3 className="mt-1 text-xl font-extrabold">{booking.full_name}</h3>
+                  <p>{booking.checkin} - {booking.checkout}, {booking.guests} oaspeți</p>
+                  <p>{booking.phone} · {booking.email}</p>
+                  {booking.notes && <p className="mt-3 rounded-xl bg-cream p-3">{booking.notes}</p>}
+                </div>
+                <div className="flex flex-wrap gap-2 md:justify-end">
+                  {[
+                    ['new', 'Nouă'],
+                    ['confirmed', 'Confirmată'],
+                    ['cancelled', 'Anulată'],
+                    ['archived', 'Arhivată']
+                  ].map(([value, label]) => (
+                    <button key={value} onClick={() => onStatus(booking.id, value)} className={`rounded-full px-4 py-2 text-sm font-bold ${booking.status === value ? 'bg-forest text-white' : 'border border-stone-light hover:bg-cream'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <select value={booking.status} onChange={(event) => onStatus(booking.id, event.target.value)} className="admin-input md:w-48">
-                <option value="new">Nouă</option>
-                <option value="confirmed">Confirmată</option>
-                <option value="cancelled">Anulată</option>
-                <option value="archived">Arhivată</option>
-              </select>
+            </div>
+          ))}
+        </div>
+        <form onSubmit={onCreateEvent} className="rounded-[28px] border border-stone-light p-5 shadow-sm">
+          <h2 className="mb-5 text-xl font-extrabold">Adaugă în calendar</h2>
+          <Field label="Titlu"><input value={manualEventDraft.title} onChange={(event) => setManualEventDraft({ ...manualEventDraft, title: event.target.value })} className="admin-input" required /></Field>
+          <Field label="Începe"><input value={manualEventDraft.starts_at} onChange={(event) => setManualEventDraft({ ...manualEventDraft, starts_at: event.target.value })} type="datetime-local" className="admin-input" required /></Field>
+          <Field label="Se termină"><input value={manualEventDraft.ends_at} onChange={(event) => setManualEventDraft({ ...manualEventDraft, ends_at: event.target.value })} type="datetime-local" className="admin-input" /></Field>
+          <Field label="Notițe"><textarea value={manualEventDraft.notes} onChange={(event) => setManualEventDraft({ ...manualEventDraft, notes: event.target.value })} rows={3} className="admin-input" /></Field>
+          <button className="rounded-full bg-forest px-5 py-3 text-sm font-bold text-white">Adaugă eveniment</button>
+          {!!events.length && <div className="mt-8 space-y-2">
+            <h3 className="text-sm font-bold">Evenimente manuale</h3>
+            {events.map((event) => (
+              <div key={event.id} className="flex items-center justify-between rounded-xl bg-cream p-3 text-sm">
+                <span>{event.title}</span>
+                <button type="button" onClick={() => onDeleteEvent(event.id)} className="text-red-700"><Trash2 className="h-4 w-4" /></button>
+              </div>
+            ))}
+          </div>}
+        </form>
+      </div>}
+
+      {view === 'calendar' && (
+        <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_360px]">
+          <div className="overflow-hidden rounded-[28px] border border-stone-light">
+            <div className="border-b border-stone-light p-5 text-center text-2xl font-extrabold">
+              {monthStart.toLocaleDateString('ro-MD', { month: 'long', year: 'numeric' })}
+            </div>
+            <div className="grid grid-cols-7 bg-cream text-center text-sm font-bold">
+              {['Du', 'Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sâ'].map((day) => <div key={day} className="border-b border-stone-light p-3">{day}</div>)}
+            </div>
+            <div className="grid grid-cols-7">
+              {days.map((day) => {
+                const key = dateKey(day);
+                const dayItems = calendarItems.filter((item) => item.date === key);
+                return (
+                  <div key={key} className={`min-h-28 border-b border-r border-stone-light p-2 ${day.getMonth() !== monthStart.getMonth() ? 'bg-stone-light/20 text-stone' : ''}`}>
+                    <div className="text-right text-sm font-bold">{day.getDate()}</div>
+                    <div className="mt-2 space-y-1">
+                      {dayItems.map((item) => (
+                        <div key={item.id} className="rounded px-2 py-1 text-xs font-bold text-white" style={{ backgroundColor: item.color }}>
+                          {item.label}: {item.title}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        ))}
-      </div>
+
+          <form onSubmit={onCreateEvent} className="rounded-[28px] border border-stone-light p-5 shadow-sm">
+            <h2 className="mb-5 text-xl font-extrabold">Adaugă eveniment manual</h2>
+            <Field label="Titlu"><input value={manualEventDraft.title} onChange={(event) => setManualEventDraft({ ...manualEventDraft, title: event.target.value })} className="admin-input" required /></Field>
+            <Field label="Începe"><input value={manualEventDraft.starts_at} onChange={(event) => setManualEventDraft({ ...manualEventDraft, starts_at: event.target.value })} type="datetime-local" className="admin-input" required /></Field>
+            <Field label="Se termină"><input value={manualEventDraft.ends_at} onChange={(event) => setManualEventDraft({ ...manualEventDraft, ends_at: event.target.value })} type="datetime-local" className="admin-input" /></Field>
+            <Field label="Notițe"><textarea value={manualEventDraft.notes} onChange={(event) => setManualEventDraft({ ...manualEventDraft, notes: event.target.value })} rows={3} className="admin-input" /></Field>
+            <button className="rounded-full bg-forest px-5 py-3 text-sm font-bold text-white">Adaugă în calendar</button>
+
+            {!!events.length && <div className="mt-8">
+              <h3 className="mb-3 text-sm font-bold">Evenimente manuale</h3>
+              <div className="space-y-2">
+                {events.map((event) => (
+                  <div key={event.id} className="flex items-center justify-between rounded-xl bg-cream p-3 text-sm">
+                    <span>{event.title}</span>
+                    <button type="button" onClick={() => onDeleteEvent(event.id)} className="text-red-700"><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                ))}
+              </div>
+            </div>}
+          </form>
+        </div>
+      )}
     </section>
   );
 }
@@ -1129,16 +1393,31 @@ function SettingsPage(props: {
   setContact: React.Dispatch<React.SetStateAction<any>>;
   about: any;
   setAbout: React.Dispatch<React.SetStateAction<any>>;
+  home: any;
+  setHome: React.Dispatch<React.SetStateAction<any>>;
+  discover: any;
+  setDiscover: React.Dispatch<React.SetStateAction<any>>;
   onUpload: (files: FileList | null) => Promise<string[]>;
   onSaveContact: () => void;
   onSaveAbout: () => void;
+  onSaveHome: () => void;
+  onSaveDiscover: () => void;
 }) {
-  const { language, setLanguage, settingsTab, setSettingsTab, contact, setContact, about, setAbout, onUpload, onSaveContact, onSaveAbout } = props;
+  const { language, setLanguage, settingsTab, setSettingsTab, contact, setContact, about, setAbout, home, setHome, discover, setDiscover, onUpload, onSaveContact, onSaveAbout, onSaveHome, onSaveDiscover } = props;
 
   function updateSocial(index: number, key: 'network' | 'url', value: string) {
     setContact((current: any) => ({
       ...current,
       social_links: current.social_links.map((item: any, itemIndex: number) => (itemIndex === index ? { ...item, [key]: value } : item))
+    }));
+  }
+
+  function updateDiscoverItem(index: number, field: 'title' | 'description', value: string) {
+    setDiscover((current: any) => ({
+      ...current,
+      items: current.items.map((item: any, itemIndex: number) =>
+        itemIndex === index ? { ...item, [field]: { ...item[field], [language]: value } } : item
+      )
     }));
   }
 
@@ -1153,6 +1432,15 @@ function SettingsPage(props: {
 
       <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
         <aside className="rounded-[28px] border border-stone-light p-3 shadow-sm">
+          <button onClick={() => setSettingsTab('home')} className={`mb-2 w-full rounded-2xl px-4 py-3 text-left text-sm font-bold ${settingsTab === 'home' ? 'bg-forest text-white' : 'hover:bg-cream'}`}>
+            Prima pagină
+          </button>
+          <button onClick={() => setSettingsTab('gallery')} className={`mb-2 w-full rounded-2xl px-4 py-3 text-left text-sm font-bold ${settingsTab === 'gallery' ? 'bg-forest text-white' : 'hover:bg-cream'}`}>
+            Galerie
+          </button>
+          <button onClick={() => setSettingsTab('discover')} className={`mb-2 w-full rounded-2xl px-4 py-3 text-left text-sm font-bold ${settingsTab === 'discover' ? 'bg-forest text-white' : 'hover:bg-cream'}`}>
+            Descoperă zona
+          </button>
           <button onClick={() => setSettingsTab('contact')} className={`mb-2 w-full rounded-2xl px-4 py-3 text-left text-sm font-bold ${settingsTab === 'contact' ? 'bg-forest text-white' : 'hover:bg-cream'}`}>
             Contact
           </button>
@@ -1160,6 +1448,87 @@ function SettingsPage(props: {
             Despre noi
           </button>
         </aside>
+
+        {settingsTab === 'home' && (
+          <Panel title="Prima pagină - slider și hero">
+            <LangTabs value={language} onChange={setLanguage} />
+            <Field label="Text mic deasupra titlului">
+              <input value={home.hero?.badge?.[language] ?? ''} onChange={(event) => setHome((current: any) => ({ ...current, hero: { ...current.hero, badge: { ...current.hero.badge, [language]: event.target.value } } }))} className="admin-input" />
+            </Field>
+            <Field label="Titlu principal">
+              <input value={home.hero?.title?.[language] ?? ''} onChange={(event) => setHome((current: any) => ({ ...current, hero: { ...current.hero, title: { ...current.hero.title, [language]: event.target.value } } }))} className="admin-input" />
+            </Field>
+            <Field label="Subtitlu">
+              <textarea value={home.hero?.subtitle?.[language] ?? ''} onChange={(event) => setHome((current: any) => ({ ...current, hero: { ...current.hero, subtitle: { ...current.hero.subtitle, [language]: event.target.value } } }))} rows={4} className="admin-input" />
+            </Field>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Buton principal">
+                <input value={home.hero?.primaryLabel?.[language] ?? ''} onChange={(event) => setHome((current: any) => ({ ...current, hero: { ...current.hero, primaryLabel: { ...current.hero.primaryLabel, [language]: event.target.value } } }))} className="admin-input" />
+              </Field>
+              <Field label="Buton telefon">
+                <input value={home.hero?.secondaryLabel?.[language] ?? ''} onChange={(event) => setHome((current: any) => ({ ...current, hero: { ...current.hero, secondaryLabel: { ...current.hero.secondaryLabel, [language]: event.target.value } } }))} className="admin-input" />
+              </Field>
+            </div>
+            <Field label="Telefon pentru buton">
+              <input value={home.hero?.secondaryPhone ?? ''} onChange={(event) => setHome((current: any) => ({ ...current, hero: { ...current.hero, secondaryPhone: event.target.value } }))} className="admin-input" />
+            </Field>
+            <ImageListEditor
+              label="Imagini slider"
+              images={home.hero?.images ?? []}
+              onChange={(images) => setHome((current: any) => ({ ...current, hero: { ...current.hero, images } }))}
+              onUpload={onUpload}
+            />
+            <button onClick={onSaveHome} className="rounded-full bg-forest px-5 py-3 text-sm font-bold text-white"><Save className="mr-2 inline h-4 w-4" /> Salvează prima pagină</button>
+          </Panel>
+        )}
+
+        {settingsTab === 'gallery' && (
+          <Panel title="Galerie prima pagină">
+            <ImageListEditor label="Poze galerie" images={home.gallery ?? []} onChange={(gallery) => setHome((current: any) => ({ ...current, gallery }))} onUpload={onUpload} />
+            <button onClick={onSaveHome} className="rounded-full bg-forest px-5 py-3 text-sm font-bold text-white"><Save className="mr-2 inline h-4 w-4" /> Salvează galeria</button>
+          </Panel>
+        )}
+
+        {settingsTab === 'discover' && (
+          <Panel title="Descoperă zona">
+            <LangTabs value={language} onChange={setLanguage} />
+            <Field label="Titlu pagină">
+              <input value={discover.title?.[language] ?? ''} onChange={(event) => setDiscover((current: any) => ({ ...current, title: { ...current.title, [language]: event.target.value } }))} className="admin-input" />
+            </Field>
+            <Field label="Subtitlu">
+              <input value={discover.subtitle?.[language] ?? ''} onChange={(event) => setDiscover((current: any) => ({ ...current, subtitle: { ...current.subtitle, [language]: event.target.value } }))} className="admin-input" />
+            </Field>
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-sm font-bold">Itemi zonă</h3>
+                <button onClick={() => setDiscover((current: any) => ({ ...current, items: [...(current.items ?? []), { title: { ...localized }, description: { ...localized }, images: [] }] }))} className="rounded-full border border-stone-light px-4 py-2 text-sm font-bold hover:bg-cream">
+                  <Plus className="mr-2 inline h-4 w-4" /> Adaugă item
+                </button>
+              </div>
+              <div className="space-y-4">
+                {(discover.items ?? []).map((item: any, index: number) => (
+                  <div key={index} className="rounded-2xl border border-stone-light p-4">
+                    <Field label="Titlu item">
+                      <input value={item.title?.[language] ?? ''} onChange={(event) => updateDiscoverItem(index, 'title', event.target.value)} className="admin-input" />
+                    </Field>
+                    <Field label="Descriere item">
+                      <textarea value={item.description?.[language] ?? ''} onChange={(event) => updateDiscoverItem(index, 'description', event.target.value)} rows={3} className="admin-input" />
+                    </Field>
+                    <button onClick={() => setDiscover((current: any) => ({ ...current, items: current.items.filter((_: any, itemIndex: number) => itemIndex !== index) }))} className="rounded-full border border-red-200 px-4 py-2 text-sm font-bold text-red-700">Șterge item</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <ImageListEditor label="Poze pagină" images={discover.images ?? []} onChange={(images) => setDiscover((current: any) => ({ ...current, images }))} onUpload={onUpload} />
+            <Field label="Titlu legendă">
+              <input value={discover.legendTitle?.[language] ?? ''} onChange={(event) => setDiscover((current: any) => ({ ...current, legendTitle: { ...current.legendTitle, [language]: event.target.value } }))} className="admin-input" />
+            </Field>
+            <Field label="Text legendă">
+              <textarea value={discover.legendText?.[language] ?? ''} onChange={(event) => setDiscover((current: any) => ({ ...current, legendText: { ...current.legendText, [language]: event.target.value } }))} rows={4} className="admin-input" />
+            </Field>
+            <button onClick={onSaveDiscover} className="rounded-full bg-forest px-5 py-3 text-sm font-bold text-white"><Save className="mr-2 inline h-4 w-4" /> Salvează Descoperă zona</button>
+          </Panel>
+        )}
 
         {settingsTab === 'contact' && (
         <Panel title="Contact">

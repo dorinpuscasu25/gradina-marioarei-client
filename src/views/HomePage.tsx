@@ -14,19 +14,26 @@ import type { Accommodation } from '@/src/lib/cms/types';
 
 type HomePageProps = I18nProps & {
   accommodations: Accommodation[];
+  settings?: any;
 };
 
-export function HomePage({ lang, t, accommodations }: HomePageProps) {
+export function HomePage({ lang, t, accommodations, settings }: HomePageProps) {
   const featuredAccommodations = accommodations.slice(0, 3);
+  const hero = settings?.hero;
+  const heroImages = hero?.images?.length ? hero.images : undefined;
+  const galleryImages = settings?.gallery?.length ? settings.gallery : undefined;
 
   return (
     <div className="min-h-screen">
       <HeroSection
         lang={lang}
-        welcome={t('hero.welcome')}
-        subtitle={t('hero.subtitle')}
-        ctaPrimary={t('hero.cta_primary')}
-        ctaSecondary={t('hero.cta_secondary')}
+        welcome={hero?.title?.[lang] || t('hero.welcome')}
+        subtitle={hero?.subtitle?.[lang] || t('hero.subtitle')}
+        ctaPrimary={hero?.primaryLabel?.[lang] || t('hero.cta_primary')}
+        ctaSecondary={hero?.secondaryLabel?.[lang] || t('hero.cta_secondary')}
+        badge={hero?.badge?.[lang]}
+        phone={hero?.secondaryPhone}
+        images={heroImages}
       />
       <HighlightsBar t={t} />
 
@@ -114,7 +121,7 @@ export function HomePage({ lang, t, accommodations }: HomePageProps) {
 
       <section className="py-20 container-custom">
         <SectionHeading title={t('gallery.title')} subtitle={t('gallery.subtitle')} />
-        <GalleryGrid />
+        <GalleryGrid items={galleryImages} />
       </section>
 
       <ContactStrip t={t} />

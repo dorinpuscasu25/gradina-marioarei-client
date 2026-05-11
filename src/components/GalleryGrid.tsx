@@ -14,19 +14,19 @@ const images = ["/ciubar.jpg", "/ciubar2.jpg", "/zona_pentru_rug.jpg", "/casamar
 
 
 
-export function GalleryGrid() {
+export function GalleryGrid({ items = images }: { items?: string[] }) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const close = useCallback(() => setSelectedIndex(null), []);
   const goNext = useCallback(() => {
     setSelectedIndex((prev) =>
-    prev !== null ? (prev + 1) % images.length : null
+    prev !== null ? (prev + 1) % items.length : null
     );
-  }, []);
+  }, [items.length]);
   const goPrev = useCallback(() => {
     setSelectedIndex((prev) =>
-    prev !== null ? (prev - 1 + images.length) % images.length : null
+    prev !== null ? (prev - 1 + items.length) % items.length : null
     );
-  }, []);
+  }, [items.length]);
   // Keyboard navigation
   useEffect(() => {
     if (selectedIndex === null) return;
@@ -46,7 +46,7 @@ export function GalleryGrid() {
     <>
       {/* Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-        {images.map((src, idx) =>
+        {items.map((src, idx) =>
         <ScrollReveal key={idx} delay={idx * 0.1}>
             <div
             className="aspect-square overflow-hidden rounded-lg cursor-pointer group relative"
@@ -102,7 +102,7 @@ export function GalleryGrid() {
 
             {/* Counter */}
             <div className="absolute top-5 left-1/2 -translate-x-1/2 z-10 text-white/60 text-sm font-medium">
-              {selectedIndex + 1} / {images.length}
+              {selectedIndex + 1} / {items.length}
             </div>
 
             {/* Prev button */}
@@ -140,7 +140,7 @@ export function GalleryGrid() {
             onClick={(e) => e.stopPropagation()}>
 
               <img
-              src={images[selectedIndex]}
+              src={items[selectedIndex]}
               alt={`Gallery image ${selectedIndex + 1}`}
               className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl" />
 

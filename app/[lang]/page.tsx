@@ -3,7 +3,7 @@ import { HomePage } from '@/src/views/HomePage';
 import { notFound } from 'next/navigation';
 import { isLanguage } from '@/src/i18n/server';
 import { buildPageMetadata, SITE_NAME, SITE_URL } from '@/src/seo/metadata';
-import { createCmsTranslator, getAccommodations } from '@/src/lib/cms/data';
+import { createCmsTranslator, getAccommodations, getSiteSettings } from '@/src/lib/cms/data';
 
 type PageProps = {
   params: Promise<{ lang: string }>;
@@ -24,6 +24,7 @@ export default async function HomeRoute({ params }: PageProps) {
   }
   const t = await createCmsTranslator(lang);
   const accommodations = await getAccommodations(lang);
+  const settings = await getSiteSettings();
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': 'LodgingBusiness',
@@ -46,7 +47,7 @@ export default async function HomeRoute({ params }: PageProps) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-      <HomePage lang={lang} t={t} accommodations={accommodations} />
+      <HomePage lang={lang} t={t} accommodations={accommodations} settings={(settings as any).home} />
     </>
   );
 }

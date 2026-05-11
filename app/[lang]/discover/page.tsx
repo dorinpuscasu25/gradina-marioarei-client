@@ -3,7 +3,7 @@ import { DiscoverPage } from '@/src/views/DiscoverPage';
 import { notFound } from 'next/navigation';
 import { isLanguage } from '@/src/i18n/server';
 import { buildPageMetadata } from '@/src/seo/metadata';
-import { createCmsTranslator } from '@/src/lib/cms/data';
+import { createCmsTranslator, getSiteSettings } from '@/src/lib/cms/data';
 
 type PageProps = {
   params: Promise<{ lang: string }>;
@@ -23,5 +23,6 @@ export default async function DiscoverRoute({ params }: PageProps) {
     notFound();
   }
   const t = await createCmsTranslator(lang);
-  return <DiscoverPage lang={lang} t={t} />;
+  const settings = await getSiteSettings();
+  return <DiscoverPage lang={lang} t={t} settings={(settings as any).discover} />;
 }

@@ -13,6 +13,9 @@ type HeroSectionProps = {
   subtitle: string;
   ctaPrimary: string;
   ctaSecondary: string;
+  badge?: string;
+  phone?: string;
+  images?: string[];
 };
 
 export function HeroSection({
@@ -20,17 +23,20 @@ export function HeroSection({
   welcome,
   subtitle,
   ctaPrimary,
-  ctaSecondary
+  ctaSecondary,
+  badge = 'Vălcineț, Moldova',
+  phone = '060588845',
+  images = heroImages
 }: HeroSectionProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setCurrentImageIndex((prev) => (prev + 1) % heroImages.length);
+      setCurrentImageIndex((prev) => (prev + 1) % images.length);
     }, 5000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [images.length]);
 
   return (
     <section className="relative h-screen min-h-[600px] w-full overflow-hidden flex items-center justify-center">
@@ -38,7 +44,7 @@ export function HeroSection({
         <AnimatePresence mode="wait">
           <motion.img
             key={currentImageIndex}
-            src={heroImages[currentImageIndex]}
+            src={images[currentImageIndex]}
             alt="Pensiunea Grădina Mărioarei"
             className="w-full h-full object-cover"
             initial={{ opacity: 0, scale: 1.1 }}
@@ -51,7 +57,7 @@ export function HeroSection({
       </div>
 
       <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 z-10 flex gap-2">
-        {heroImages.map((_, idx) => (
+        {images.map((_, idx) => (
           <button
             key={idx}
             onClick={() => setCurrentImageIndex(idx)}
@@ -68,7 +74,7 @@ export function HeroSection({
           transition={{ duration: 0.8, delay: 0.2 }}
         >
           <span className="inline-block py-1 px-3 rounded-full bg-white/20 backdrop-blur-sm text-white text-sm font-medium tracking-wider uppercase mb-6 border border-white/30">
-            Vălcineț, Moldova
+            {badge}
           </span>
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-serif font-bold text-white mb-6 leading-tight shadow-sm">
             {welcome}
@@ -86,7 +92,7 @@ export function HeroSection({
               {ctaPrimary}
             </Link>
             <a
-              href="tel:060588845"
+              href={`tel:${phone}`}
               className="w-full sm:w-auto px-8 py-4 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/50 text-white rounded-md font-medium text-lg transition-all flex items-center justify-center gap-2"
             >
               <Phone className="w-5 h-5" />
