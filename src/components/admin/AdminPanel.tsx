@@ -15,7 +15,6 @@ import {
   Plus,
   RefreshCw,
   Save,
-  Search,
   Settings,
   Sparkles,
   Trash2,
@@ -188,7 +187,6 @@ export function AdminPanel({
   const [message, setMessage] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [search, setSearch] = useState('');
   const [language, setLanguage] = useState<Lang>('ro');
   const [editorTab, setEditorTab] = useState<EditorTab>('data');
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('contact');
@@ -591,11 +589,7 @@ export function AdminPanel({
 
   const currentListingKind: ListingKind = section === 'experiences' ? 'experience' : 'accommodation';
   const currentListings = currentListingKind === 'accommodation' ? accommodations : experiences;
-  const filteredListings = currentListings.filter((item) => JSON.stringify(item).toLowerCase().includes(search.toLowerCase()));
-  const filteredTexts = texts
-    .filter((item) => !dynamicTextPrefixes.some((prefix) => item.key.startsWith(prefix)))
-    .filter((item) => JSON.stringify(item).toLowerCase().includes(search.toLowerCase()));
-  const filteredBookings = bookings.filter((item) => JSON.stringify(item).toLowerCase().includes(search.toLowerCase()));
+  const staticTexts = texts.filter((item) => !dynamicTextPrefixes.some((prefix) => item.key.startsWith(prefix)));
   const newBookings = bookings.filter((booking) => booking.status === 'new').length;
 
   if (loading) {
@@ -701,11 +695,7 @@ export function AdminPanel({
 
       <main className="mx-auto max-w-7xl px-5 py-8">
         {!isEditor && (
-          <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="relative w-full max-w-xl">
-              <Search className="absolute left-4 top-3.5 h-5 w-5 text-stone" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Caută peste tot în secțiunea curentă..." className="w-full rounded-xl border border-stone-light bg-white py-3 pl-12 pr-4 outline-none focus:ring-2 focus:ring-forest" />
-            </div>
+          <div className="mb-8 flex justify-end">
             {(section === 'accommodations' || section === 'experiences') && (
               <div className="flex gap-2">
                 <button onClick={() => go(section, { action: 'new', kind: currentListingKind })} className="rounded-full bg-forest px-5 py-3 text-sm font-bold text-white">
@@ -749,7 +739,7 @@ export function AdminPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredListings.map((item) => (
+                  {currentListings.map((item) => (
                     <tr key={item.id} className="border-t border-stone-light hover:bg-cream/40">
                       <td className="px-6 py-5">
                         <button onClick={() => go(section, { action: 'edit', kind: currentListingKind, id: item.id })} className="flex items-center gap-4 text-left">
@@ -800,7 +790,7 @@ export function AdminPanel({
 
         {section === 'translations' && (
           <TranslationsTable
-            rows={filteredTexts}
+            rows={staticTexts}
             editingCell={editingCell}
             setEditingCell={setEditingCell}
             onSave={saveTextCell}
@@ -810,7 +800,7 @@ export function AdminPanel({
 
         {section === 'bookings' && (
           <BookingsTable
-            rows={filteredBookings}
+            rows={bookings}
             events={calendarEvents}
             view={bookingView}
             setView={setBookingView}
@@ -1241,6 +1231,7 @@ function BookingsTable({
   onDeleteEvent: (id: string) => void;
   onStatus: (id: string, status: string) => void;
 }) {
+  const [modal, setModal] = useState<{ type: 'create' } | { type: 'details'; item: any } | null>(null);
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   const startOffset = monthStart.getDay();
   const calendarStart = new Date(monthStart);
@@ -1256,7 +1247,9 @@ function BookingsTable({
       title: booking.full_name,
       date: booking.checkin,
       label: 'Rezervare',
-      color: '#173f35'
+      color: '#173f35',
+      sourceType: 'booking',
+      source: booking
     })),
     ...events.map((event) => ({
       id: event.id,
@@ -1264,9 +1257,21 @@ function BookingsTable({
       date: event.starts_at?.slice(0, 10),
       label: 'Manual',
       color: event.color || '#b87333',
-      manual: true
+      sourceType: 'manual',
+      source: event
     }))
   ];
+  const statusItems = [
+    ['new', 'Nouă'],
+    ['confirmed', 'Confirmată'],
+    ['cancelled', 'Anulată'],
+    ['archived', 'Arhivată']
+  ];
+
+  async function submitEvent(event: React.FormEvent) {
+    await onCreateEvent(event);
+    setModal(null);
+  }
 
   return (
     <section>
@@ -1276,32 +1281,33 @@ function BookingsTable({
           <h1 className="mt-2 text-4xl font-extrabold">Rezervări și calendar</h1>
           <p className="mt-3 text-stone-dark">Confirmi rezervările, vezi calendarul și poți adăuga blocări/evenimente manuale.</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => setView('list')} className={`rounded-full px-5 py-3 text-sm font-bold ${view === 'list' ? 'bg-forest text-white' : 'border border-stone-light'}`}>Listă</button>
-          <button onClick={() => setView('calendar')} className={`rounded-full px-5 py-3 text-sm font-bold ${view === 'calendar' ? 'bg-forest text-white' : 'border border-stone-light'}`}>Calendar</button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-xl border border-stone-light bg-white p-1">
+            <button onClick={() => setView('list')} className={`h-9 rounded-lg px-3 text-sm font-bold ${view === 'list' ? 'bg-forest text-white' : 'text-stone-dark hover:bg-cream'}`}>Listă</button>
+            <button onClick={() => setView('calendar')} className={`h-9 rounded-lg px-3 text-sm font-bold ${view === 'calendar' ? 'bg-forest text-white' : 'text-stone-dark hover:bg-cream'}`}>Calendar</button>
+          </div>
+          <button onClick={() => setModal({ type: 'create' })} className="inline-flex h-11 items-center rounded-xl bg-forest px-4 text-sm font-bold text-white hover:bg-forest-light">
+            <Plus className="mr-2 h-4 w-4" />
+            Adaugă eveniment
+          </button>
         </div>
       </div>
 
-      {view === 'list' && <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_360px]">
+      {view === 'list' && <div className="mt-8">
         <div className="space-y-4">
           {rows.map((booking) => (
             <div key={booking.id} className="rounded-2xl border border-stone-light p-5">
-              <div className="flex flex-col gap-4 md:flex-row md:justify-between">
-                <div>
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div className="min-w-0">
                   <p className="text-xs font-bold uppercase tracking-wider text-terracotta">{new Date(booking.created_at).toLocaleString('ro-MD')}</p>
                   <h3 className="mt-1 text-xl font-extrabold">{booking.full_name}</h3>
                   <p>{booking.checkin} - {booking.checkout}, {booking.guests} oaspeți</p>
                   <p>{booking.phone} · {booking.email}</p>
                   {booking.notes && <p className="mt-3 rounded-xl bg-cream p-3">{booking.notes}</p>}
                 </div>
-                <div className="flex flex-wrap gap-2 md:justify-end">
-                  {[
-                    ['new', 'Nouă'],
-                    ['confirmed', 'Confirmată'],
-                    ['cancelled', 'Anulată'],
-                    ['archived', 'Arhivată']
-                  ].map(([value, label]) => (
-                    <button key={value} onClick={() => onStatus(booking.id, value)} className={`rounded-full px-4 py-2 text-sm font-bold ${booking.status === value ? 'bg-forest text-white' : 'border border-stone-light hover:bg-cream'}`}>
+                <div className="flex shrink-0 flex-wrap items-start gap-1.5 md:max-w-[360px] md:justify-end">
+                  {statusItems.map(([value, label]) => (
+                    <button key={value} onClick={() => onStatus(booking.id, value)} className={`h-8 rounded-lg px-2.5 text-xs font-bold ${booking.status === value ? 'bg-forest text-white' : 'border border-stone-light bg-white text-stone-dark hover:bg-cream'}`}>
                       {label}
                     </button>
                   ))}
@@ -1310,28 +1316,11 @@ function BookingsTable({
             </div>
           ))}
         </div>
-        <form onSubmit={onCreateEvent} className="rounded-[28px] border border-stone-light p-5 shadow-sm">
-          <h2 className="mb-5 text-xl font-extrabold">Adaugă în calendar</h2>
-          <Field label="Titlu"><input value={manualEventDraft.title} onChange={(event) => setManualEventDraft({ ...manualEventDraft, title: event.target.value })} className="admin-input" required /></Field>
-          <Field label="Începe"><input value={manualEventDraft.starts_at} onChange={(event) => setManualEventDraft({ ...manualEventDraft, starts_at: event.target.value })} type="datetime-local" className="admin-input" required /></Field>
-          <Field label="Se termină"><input value={manualEventDraft.ends_at} onChange={(event) => setManualEventDraft({ ...manualEventDraft, ends_at: event.target.value })} type="datetime-local" className="admin-input" /></Field>
-          <Field label="Notițe"><textarea value={manualEventDraft.notes} onChange={(event) => setManualEventDraft({ ...manualEventDraft, notes: event.target.value })} rows={3} className="admin-input" /></Field>
-          <button className="rounded-full bg-forest px-5 py-3 text-sm font-bold text-white">Adaugă eveniment</button>
-          {!!events.length && <div className="mt-8 space-y-2">
-            <h3 className="text-sm font-bold">Evenimente manuale</h3>
-            {events.map((event) => (
-              <div key={event.id} className="flex items-center justify-between rounded-xl bg-cream p-3 text-sm">
-                <span>{event.title}</span>
-                <button type="button" onClick={() => onDeleteEvent(event.id)} className="text-red-700"><Trash2 className="h-4 w-4" /></button>
-              </div>
-            ))}
-          </div>}
-        </form>
       </div>}
 
       {view === 'calendar' && (
-        <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_360px]">
-          <div className="overflow-hidden rounded-[28px] border border-stone-light">
+        <div className="mt-8">
+          <div className="overflow-hidden rounded-[24px] border border-stone-light">
             <div className="border-b border-stone-light p-5 text-center text-2xl font-extrabold">
               {monthStart.toLocaleDateString('ro-MD', { month: 'long', year: 'numeric' })}
             </div>
@@ -1347,9 +1336,9 @@ function BookingsTable({
                     <div className="text-right text-sm font-bold">{day.getDate()}</div>
                     <div className="mt-2 space-y-1">
                       {dayItems.map((item) => (
-                        <div key={item.id} className="rounded px-2 py-1 text-xs font-bold text-white" style={{ backgroundColor: item.color }}>
+                        <button key={item.id} onClick={() => setModal({ type: 'details', item })} className="block w-full truncate rounded px-2 py-1 text-left text-xs font-bold text-white" style={{ backgroundColor: item.color }}>
                           {item.label}: {item.title}
-                        </div>
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -1357,27 +1346,66 @@ function BookingsTable({
               })}
             </div>
           </div>
+        </div>
+      )}
 
-          <form onSubmit={onCreateEvent} className="rounded-[28px] border border-stone-light p-5 shadow-sm">
-            <h2 className="mb-5 text-xl font-extrabold">Adaugă eveniment manual</h2>
-            <Field label="Titlu"><input value={manualEventDraft.title} onChange={(event) => setManualEventDraft({ ...manualEventDraft, title: event.target.value })} className="admin-input" required /></Field>
-            <Field label="Începe"><input value={manualEventDraft.starts_at} onChange={(event) => setManualEventDraft({ ...manualEventDraft, starts_at: event.target.value })} type="datetime-local" className="admin-input" required /></Field>
-            <Field label="Se termină"><input value={manualEventDraft.ends_at} onChange={(event) => setManualEventDraft({ ...manualEventDraft, ends_at: event.target.value })} type="datetime-local" className="admin-input" /></Field>
-            <Field label="Notițe"><textarea value={manualEventDraft.notes} onChange={(event) => setManualEventDraft({ ...manualEventDraft, notes: event.target.value })} rows={3} className="admin-input" /></Field>
-            <button className="rounded-full bg-forest px-5 py-3 text-sm font-bold text-white">Adaugă în calendar</button>
-
-            {!!events.length && <div className="mt-8">
-              <h3 className="mb-3 text-sm font-bold">Evenimente manuale</h3>
-              <div className="space-y-2">
-                {events.map((event) => (
-                  <div key={event.id} className="flex items-center justify-between rounded-xl bg-cream p-3 text-sm">
-                    <span>{event.title}</span>
-                    <button type="button" onClick={() => onDeleteEvent(event.id)} className="text-red-700"><Trash2 className="h-4 w-4" /></button>
-                  </div>
-                ))}
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-forest-dark/40 px-4 py-8">
+          <div className="w-full max-w-lg rounded-[24px] bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.25em] text-stone">{modal.type === 'create' ? 'Calendar' : modal.item.label}</p>
+                <h2 className="mt-1 text-2xl font-extrabold">{modal.type === 'create' ? 'Adaugă eveniment' : modal.item.title}</h2>
               </div>
-            </div>}
-          </form>
+              <button onClick={() => setModal(null)} className="rounded-full border border-stone-light px-3 py-1.5 text-sm font-bold hover:bg-cream">Închide</button>
+            </div>
+
+            {modal.type === 'create' && (
+              <form onSubmit={submitEvent} className="space-y-4">
+                <Field label="Titlu"><input value={manualEventDraft.title} onChange={(event) => setManualEventDraft({ ...manualEventDraft, title: event.target.value })} className="admin-input" required /></Field>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field label="Începe"><input value={manualEventDraft.starts_at} onChange={(event) => setManualEventDraft({ ...manualEventDraft, starts_at: event.target.value })} type="datetime-local" className="admin-input" required /></Field>
+                  <Field label="Se termină"><input value={manualEventDraft.ends_at} onChange={(event) => setManualEventDraft({ ...manualEventDraft, ends_at: event.target.value })} type="datetime-local" className="admin-input" /></Field>
+                </div>
+                <Field label="Notițe"><textarea value={manualEventDraft.notes} onChange={(event) => setManualEventDraft({ ...manualEventDraft, notes: event.target.value })} rows={4} className="admin-input" /></Field>
+                <div className="flex justify-end">
+                  <button className="rounded-xl bg-forest px-5 py-3 text-sm font-bold text-white">Salvează eveniment</button>
+                </div>
+              </form>
+            )}
+
+            {modal.type === 'details' && modal.item.sourceType === 'booking' && (
+              <div className="space-y-4">
+                <div className="rounded-2xl bg-cream p-4">
+                  <p className="font-bold">{modal.item.source.checkin} - {modal.item.source.checkout}</p>
+                  <p>{modal.item.source.guests} oaspeți</p>
+                  <p>{modal.item.source.phone} · {modal.item.source.email}</p>
+                  {modal.item.source.notes && <p className="mt-3">{modal.item.source.notes}</p>}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {statusItems.map(([value, label]) => (
+                    <button key={value} onClick={() => onStatus(modal.item.source.id, value)} className={`h-8 rounded-lg px-2.5 text-xs font-bold ${modal.item.source.status === value ? 'bg-forest text-white' : 'border border-stone-light hover:bg-cream'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {modal.type === 'details' && modal.item.sourceType === 'manual' && (
+              <div className="space-y-4">
+                <div className="rounded-2xl bg-cream p-4">
+                  <p><span className="font-bold">Începe:</span> {new Date(modal.item.source.starts_at).toLocaleString('ro-MD')}</p>
+                  <p><span className="font-bold">Se termină:</span> {new Date(modal.item.source.ends_at).toLocaleString('ro-MD')}</p>
+                  {modal.item.source.notes && <p className="mt-3">{modal.item.source.notes}</p>}
+                </div>
+                <button onClick={() => { onDeleteEvent(modal.item.source.id); setModal(null); }} className="rounded-xl border border-red-200 px-4 py-2 text-sm font-bold text-red-700 hover:bg-red-50">
+                  <Trash2 className="mr-2 inline h-4 w-4" />
+                  Șterge eveniment
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </section>
