@@ -1,17 +1,24 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
+  ArrowLeft,
   BedDouble,
   CalendarDays,
+  Check,
+  ChevronRight,
   FileText,
+  Home,
   Image as ImageIcon,
-  LayoutDashboard,
+  Languages,
   LogOut,
   Plus,
   RefreshCw,
   Save,
   Search,
+  Settings,
+  Sparkles,
   Trash2,
   Upload,
   UserPlus,
@@ -20,63 +27,99 @@ import {
 import { getBrowserSupabase } from '@/src/lib/supabase/client';
 import { getDefaultStaticTextRows } from '@/src/lib/cms/default-texts';
 
-type Tab = 'dashboard' | 'accommodations' | 'texts' | 'media' | 'bookings' | 'members';
+type Lang = 'ro' | 'en' | 'ru';
+type Section = 'today' | 'listings' | 'translations' | 'media' | 'bookings' | 'settings' | 'members';
+type ListingKind = 'accommodation' | 'experience';
+type AdminAction = 'list' | 'new' | 'edit';
+type EditorTab = 'data' | 'seo';
 
-type AccommodationDraft = {
-  id?: string;
-  slug: string;
-  title_ro: string;
-  title_en: string;
-  title_ru: string;
-  description_ro: string;
-  description_en: string;
-  description_ru: string;
-  amenities_ro: string;
-  amenities_en: string;
-  amenities_ru: string;
-  images: string;
-  price_per_night: string;
-  discount_percent: string;
-  currency: string;
-  capacity: string;
-  sort_order: string;
-  is_active: boolean;
-};
-
-const tabs: Array<{ id: Tab; label: string; icon: React.ElementType }> = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'accommodations', label: 'Cazări', icon: BedDouble },
-  { id: 'texts', label: 'Texte RO/EN/RU', icon: FileText },
-  { id: 'media', label: 'Fișiere', icon: ImageIcon },
-  { id: 'bookings', label: 'Rezervări', icon: CalendarDays },
-  { id: 'members', label: 'Membri', icon: Users }
+const languages: Array<{ id: Lang; label: string }> = [
+  { id: 'ro', label: 'Română' },
+  { id: 'en', label: 'English' },
+  { id: 'ru', label: 'Русский' }
 ];
 
-const emptyAccommodation: AccommodationDraft = {
+const navItems: Array<{ id: Section; label: string; icon: React.ElementType }> = [
+  { id: 'today', label: 'Today', icon: Home },
+  { id: 'listings', label: 'Listings', icon: BedDouble },
+  { id: 'translations', label: 'Traduceri', icon: Languages },
+  { id: 'media', label: 'Media', icon: ImageIcon },
+  { id: 'bookings', label: 'Rezervări', icon: CalendarDays },
+  { id: 'settings', label: 'Setări', icon: Settings },
+  { id: 'members', label: 'Echipă', icon: Users }
+];
+
+const localized = { ro: '', en: '', ru: '' };
+const emptySeo = {
+  ro: { title: '', description: '', keywords: '' },
+  en: { title: '', description: '', keywords: '' },
+  ru: { title: '', description: '', keywords: '' }
+};
+
+const emptyListing = {
   slug: '',
-  title_ro: '',
-  title_en: '',
-  title_ru: '',
-  description_ro: '',
-  description_en: '',
-  description_ru: '',
-  amenities_ro: '',
-  amenities_en: '',
-  amenities_ru: '',
-  images: '',
+  title: localized,
+  description: localized,
+  location: localized,
+  amenities: { ro: [] as string[], en: [] as string[], ru: [] as string[] },
+  highlights: { ro: [] as string[], en: [] as string[], ru: [] as string[] },
+  images: [] as string[],
+  price: '',
   price_per_night: '',
   discount_percent: '0',
   currency: 'lei',
+  duration_minutes: '',
   capacity: '',
   sort_order: '100',
-  is_active: true
+  status: 'published',
+  is_active: true,
+  seo: emptySeo
 };
 
-function lines(value: string) {
+function asLines(value: unknown) {
+  return Array.isArray(value) ? value.join('\n') : '';
+}
+
+function fromLines(value: string) {
   return value
     .split('\n')
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function getLocalized(value: any, lang: Lang) {
+  return value?.[lang] ?? value?.ro ?? '';
+}
+
+function money(value: any, currency: string) {
+  if (value === null || value === undefined || value === '') return '-';
+  return `${value} ${currency || 'lei'}`;
+}
+
+function normalizeListing(row: any, kind: ListingKind) {
+  return {
+    ...emptyListing,
+    ...row,
+    kind,
+    title: { ...localized, ...(row.title ?? {}) },
+    description: { ...localized, ...(row.description ?? {}) },
+    location: { ...localized, ...(row.location ?? {}) },
+    amenities: { ro: [], en: [], ru: [], ...(row.amenities ?? {}) },
+    highlights: { ro: [], en: [], ru: [], ...(row.highlights ?? {}) },
+    images: row.images ?? [],
+    price: row.price?.toString() ?? '',
+    price_per_night: row.price_per_night?.toString() ?? '',
+    discount_percent: row.discount_percent?.toString() ?? '0',
+    duration_minutes: row.duration_minutes?.toString() ?? '',
+    capacity: row.capacity?.toString() ?? '',
+    sort_order: row.sort_order?.toString() ?? '100',
+    status: row.status ?? (row.is_active === false ? 'draft' : 'published'),
+    seo: {
+      ro: { ...emptySeo.ro, ...(row.seo?.ro ?? {}) },
+      en: { ...emptySeo.en, ...(row.seo?.en ?? {}) },
+      ru: { ...emptySeo.ru, ...(row.seo?.ru ?? {}) }
+    }
+  };
 }
 
 function textValue(value: unknown) {
@@ -85,9 +128,7 @@ function textValue(value: unknown) {
 
 function parseTextValue(value: string) {
   const trimmed = value.trim();
-  if (!trimmed) {
-    return '';
-  }
+  if (!trimmed) return '';
 
   if (/^[\[{"]/.test(trimmed) || trimmed === 'true' || trimmed === 'false' || trimmed === 'null' || /^-?\d+(\.\d+)?$/.test(trimmed)) {
     try {
@@ -100,53 +141,85 @@ function parseTextValue(value: string) {
   return value;
 }
 
-function accommodationToDraft(row: any): AccommodationDraft {
-  return {
-    id: row.id,
-    slug: row.slug ?? '',
-    title_ro: row.title?.ro ?? '',
-    title_en: row.title?.en ?? '',
-    title_ru: row.title?.ru ?? '',
-    description_ro: row.description?.ro ?? '',
-    description_en: row.description?.en ?? '',
-    description_ru: row.description?.ru ?? '',
-    amenities_ro: (row.amenities?.ro ?? []).join('\n'),
-    amenities_en: (row.amenities?.en ?? []).join('\n'),
-    amenities_ru: (row.amenities?.ru ?? []).join('\n'),
-    images: (row.images ?? []).join('\n'),
-    price_per_night: row.price_per_night?.toString() ?? '',
-    discount_percent: row.discount_percent?.toString() ?? '0',
-    currency: row.currency ?? 'lei',
-    capacity: row.capacity?.toString() ?? '',
-    sort_order: row.sort_order?.toString() ?? '100',
-    is_active: row.is_active ?? true
-  };
-}
+type AdminPanelProps = {
+  initialSection?: Section;
+  initialAction?: AdminAction;
+  initialKind?: ListingKind;
+  initialId?: string;
+};
 
-export function AdminPanel() {
+export function AdminPanel({
+  initialSection = 'today',
+  initialAction = 'list',
+  initialKind = 'accommodation',
+  initialId
+}: AdminPanelProps) {
   const supabase = useMemo(() => getBrowserSupabase(), []);
+  const router = useRouter();
+  const section = initialSection;
+  const action = initialAction;
+  const kind = initialKind;
+  const id = initialId;
+
   const [session, setSession] = useState<any>(null);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
-  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [search, setSearch] = useState('');
+  const [listingFilter, setListingFilter] = useState<'all' | ListingKind>('all');
+  const [language, setLanguage] = useState<Lang>('ro');
+  const [editorTab, setEditorTab] = useState<EditorTab>('data');
   const [accommodations, setAccommodations] = useState<any[]>([]);
-  const [accommodationDraft, setAccommodationDraft] = useState<AccommodationDraft>(emptyAccommodation);
+  const [experiences, setExperiences] = useState<any[]>([]);
+  const [listingDraft, setListingDraft] = useState<any>(normalizeListing(emptyListing, 'accommodation'));
   const [texts, setTexts] = useState<any[]>([]);
-  const [textDraft, setTextDraft] = useState<any>({ key: '', value_ro: '', value_en: '', value_ru: '' });
+  const [editingCell, setEditingCell] = useState<{ key: string; lang: Lang } | null>(null);
   const [media, setMedia] = useState<any[]>([]);
   const [bookings, setBookings] = useState<any[]>([]);
   const [members, setMembers] = useState<any[]>([]);
   const [memberDraft, setMemberDraft] = useState({ email: '', password: '', full_name: '', role: 'editor' });
-  const [filePreview, setFilePreview] = useState('');
+  const [contactSettings, setContactSettings] = useState<any>({
+    phone: '',
+    email: '',
+    address: { ...localized },
+    map_url: '',
+    facebook: '',
+    instagram: '',
+    tiktok: ''
+  });
+  const [aboutSettings, setAboutSettings] = useState<any>({
+    headline: { ...localized },
+    story: { ...localized },
+    mission: { ...localized },
+    image: ''
+  });
+
+  const go = useCallback(
+    (nextSection: Section, params: { action?: AdminAction; kind?: ListingKind; id?: string } = {}) => {
+      if (nextSection !== 'listings') {
+        router.push(`/admin/${nextSection}`);
+        return;
+      }
+
+      if (params.action === 'new' && params.kind) {
+        router.push(`/admin/listings/new/${params.kind}`);
+        return;
+      }
+
+      if (params.action === 'edit' && params.kind && params.id) {
+        router.push(`/admin/listings/${params.kind}/${params.id}`);
+        return;
+      }
+
+      router.push('/admin/listings');
+    },
+    [router]
+  );
 
   const loadMembers = useCallback(async () => {
-    if (!session) {
-      return;
-    }
+    if (!session) return;
 
     const response = await fetch('/api/admin/members', {
       headers: { Authorization: `Bearer ${session.access_token}` }
@@ -159,22 +232,26 @@ export function AdminPanel() {
   }, [session]);
 
   const loadAll = useCallback(async () => {
-    if (!supabase) {
-      return;
-    }
+    if (!supabase) return;
 
     setMessage('');
-    const [accommodationResult, textResult, mediaResult, bookingResult] = await Promise.all([
+    const [accommodationResult, experienceResult, textResult, mediaResult, bookingResult, contactResult, aboutResult] = await Promise.all([
       supabase.from('accommodations').select('*').order('sort_order', { ascending: true }),
+      supabase.from('experiences').select('*').order('sort_order', { ascending: true }),
       supabase.from('site_texts').select('*').order('key', { ascending: true }),
       supabase.from('media_assets').select('*').order('created_at', { ascending: false }),
-      supabase.from('bookings').select('*').order('created_at', { ascending: false })
+      supabase.from('bookings').select('*').order('created_at', { ascending: false }),
+      supabase.from('app_settings').select('*').eq('key', 'contact').maybeSingle(),
+      supabase.from('app_settings').select('*').eq('key', 'about').maybeSingle()
     ]);
 
     if (accommodationResult.data) setAccommodations(accommodationResult.data);
+    if (experienceResult.data) setExperiences(experienceResult.data);
     if (textResult.data) setTexts(textResult.data);
     if (mediaResult.data) setMedia(mediaResult.data);
     if (bookingResult.data) setBookings(bookingResult.data);
+    if (contactResult.data?.value) setContactSettings((current: any) => ({ ...current, ...contactResult.data.value }));
+    if (aboutResult.data?.value) setAboutSettings((current: any) => ({ ...current, ...aboutResult.data.value }));
     await loadMembers();
   }, [loadMembers, supabase]);
 
@@ -197,16 +274,29 @@ export function AdminPanel() {
   }, [supabase]);
 
   useEffect(() => {
-    if (session) {
-      void loadAll();
-    }
+    if (session) void loadAll();
   }, [loadAll, session]);
+
+  useEffect(() => {
+    if (action !== 'edit' && action !== 'new') return;
+
+    if (action === 'new') {
+      setListingDraft(normalizeListing(emptyListing, kind));
+      setEditorTab('data');
+      return;
+    }
+
+    const source = kind === 'accommodation' ? accommodations : experiences;
+    const row = source.find((item) => item.id === id);
+    if (row) {
+      setListingDraft(normalizeListing(row, kind));
+      setEditorTab('data');
+    }
+  }, [accommodations, action, experiences, id, kind]);
 
   async function signIn(event: React.FormEvent) {
     event.preventDefault();
-    if (!supabase) {
-      return;
-    }
+    if (!supabase) return;
 
     setSaving(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -219,88 +309,107 @@ export function AdminPanel() {
     setSession(null);
   }
 
-  async function saveAccommodation(event: React.FormEvent) {
-    event.preventDefault();
-    if (!supabase) {
-      return;
+  async function uploadFiles(files: FileList | null) {
+    if (!files || !supabase || !session) return [];
+
+    const urls: string[] = [];
+    setSaving(true);
+
+    for (const file of Array.from(files)) {
+      const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-');
+      const path = `${Date.now()}-${cleanName}`;
+      const upload = await supabase.storage.from('media').upload(path, file, { upsert: true, contentType: file.type });
+
+      if (upload.error) {
+        setMessage(upload.error.message);
+        continue;
+      }
+
+      const url = supabase.storage.from('media').getPublicUrl(path).data.publicUrl;
+      urls.push(url);
+      await supabase.from('media_assets').insert({
+        title: file.name,
+        url,
+        path,
+        mime_type: file.type,
+        size_bytes: file.size,
+        created_by: session.user.id
+      });
     }
 
-    setSaving(true);
-    const payload = {
-      slug: accommodationDraft.slug,
-      title: {
-        ro: accommodationDraft.title_ro,
-        en: accommodationDraft.title_en,
-        ru: accommodationDraft.title_ru
-      },
-      description: {
-        ro: accommodationDraft.description_ro,
-        en: accommodationDraft.description_en,
-        ru: accommodationDraft.description_ru
-      },
-      amenities: {
-        ro: lines(accommodationDraft.amenities_ro),
-        en: lines(accommodationDraft.amenities_en),
-        ru: lines(accommodationDraft.amenities_ru)
-      },
-      images: lines(accommodationDraft.images),
-      price_per_night: accommodationDraft.price_per_night ? Number(accommodationDraft.price_per_night) : null,
-      discount_percent: Number(accommodationDraft.discount_percent || 0),
-      currency: accommodationDraft.currency || 'lei',
-      capacity: accommodationDraft.capacity ? Number(accommodationDraft.capacity) : null,
-      sort_order: Number(accommodationDraft.sort_order || 100),
-      is_active: accommodationDraft.is_active
-    };
+    setSaving(false);
+    await loadAll();
+    return urls;
+  }
 
-    const query = accommodationDraft.id
-      ? supabase.from('accommodations').update(payload).eq('id', accommodationDraft.id)
-      : supabase.from('accommodations').insert(payload);
+  async function attachListingImages(files: FileList | null) {
+    const urls = await uploadFiles(files);
+    if (urls.length) {
+      setListingDraft((current: any) => ({ ...current, images: [...(current.images ?? []), ...urls] }));
+    }
+  }
+
+  async function saveListing(statusOverride?: string) {
+    if (!supabase) return;
+
+    setSaving(true);
+    const isAccommodation = kind === 'accommodation';
+    const payload: any = isAccommodation
+      ? {
+          slug: listingDraft.slug,
+          title: listingDraft.title,
+          description: listingDraft.description,
+          location: listingDraft.location,
+          amenities: listingDraft.amenities,
+          images: listingDraft.images,
+          price_per_night: listingDraft.price_per_night ? Number(listingDraft.price_per_night) : null,
+          discount_percent: Number(listingDraft.discount_percent || 0),
+          currency: listingDraft.currency || 'lei',
+          capacity: listingDraft.capacity ? Number(listingDraft.capacity) : null,
+          sort_order: Number(listingDraft.sort_order || 100),
+          status: statusOverride ?? listingDraft.status,
+          is_active: (statusOverride ?? listingDraft.status) === 'published',
+          seo: listingDraft.seo
+        }
+      : {
+          slug: listingDraft.slug,
+          title: listingDraft.title,
+          description: listingDraft.description,
+          location: listingDraft.location,
+          highlights: listingDraft.highlights,
+          images: listingDraft.images,
+          price: listingDraft.price ? Number(listingDraft.price) : null,
+          currency: listingDraft.currency || 'lei',
+          duration_minutes: listingDraft.duration_minutes ? Number(listingDraft.duration_minutes) : null,
+          capacity: listingDraft.capacity ? Number(listingDraft.capacity) : null,
+          sort_order: Number(listingDraft.sort_order || 100),
+          status: statusOverride ?? listingDraft.status,
+          seo: listingDraft.seo
+        };
+
+    const table = isAccommodation ? 'accommodations' : 'experiences';
+    const query = listingDraft.id ? supabase.from(table).update(payload).eq('id', listingDraft.id) : supabase.from(table).insert(payload);
     const { error } = await query;
 
     setSaving(false);
-    setMessage(error ? error.message : 'Cazarea a fost salvată.');
+    setMessage(error ? error.message : 'Salvat.');
     if (!error) {
-      setAccommodationDraft(emptyAccommodation);
       await loadAll();
+      go('listings');
     }
   }
 
-  async function deleteAccommodation(id: string) {
-    if (!supabase || !confirm('Ștergi această cazare?')) {
-      return;
-    }
+  async function deleteListing(row: any, rowKind: ListingKind) {
+    if (!supabase || !confirm('Ștergi această înregistrare?')) return;
 
-    const { error } = await supabase.from('accommodations').delete().eq('id', id);
-    setMessage(error ? error.message : 'Cazarea a fost ștearsă.');
+    const table = rowKind === 'accommodation' ? 'accommodations' : 'experiences';
+    const { error } = await supabase.from(table).delete().eq('id', row.id);
+    setMessage(error ? error.message : 'Șters.');
     await loadAll();
   }
 
-  async function saveText(event: React.FormEvent) {
-    event.preventDefault();
-    if (!supabase || !textDraft.key) {
-      return;
-    }
-
-    setSaving(true);
-    const { error } = await supabase.from('site_texts').upsert({
-      key: textDraft.key,
-      value_ro: parseTextValue(textDraft.value_ro),
-      value_en: parseTextValue(textDraft.value_en),
-      value_ru: parseTextValue(textDraft.value_ru),
-      updated_by: session.user.id
-    });
-    setSaving(false);
-    setMessage(error ? error.message : 'Textul a fost salvat.');
-    if (!error) {
-      setTextDraft({ key: '', value_ro: '', value_en: '', value_ru: '' });
-      await loadAll();
-    }
-  }
-
   async function seedTexts() {
-    if (!supabase || !confirm('Import cheile implicite de traducere? Textele existente cu aceleași chei vor fi actualizate.')) {
-      return;
-    }
+    if (!supabase || !session) return;
 
     setSaving(true);
     const rows = getDefaultStaticTextRows().map((row) => ({ ...row, updated_by: session.user.id }));
@@ -310,75 +419,41 @@ export function AdminPanel() {
     await loadAll();
   }
 
-  async function deleteText(key: string) {
-    if (!supabase || !confirm(`Ștergi cheia ${key}?`)) {
-      return;
-    }
+  async function saveTextCell(row: any, lang: Lang, value: string) {
+    if (!supabase || !session) return;
 
-    const { error } = await supabase.from('site_texts').delete().eq('key', key);
-    setMessage(error ? error.message : 'Textul a fost șters.');
-    await loadAll();
-  }
-
-  async function uploadMedia(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file || !supabase) {
-      return;
-    }
-
-    setFilePreview(URL.createObjectURL(file));
-    setSaving(true);
-    const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-');
-    const path = `${Date.now()}-${cleanName}`;
-    const upload = await supabase.storage.from('media').upload(path, file, { upsert: true, contentType: file.type });
-
-    if (upload.error) {
-      setSaving(false);
-      setMessage(upload.error.message);
-      return;
-    }
-
-    const publicUrl = supabase.storage.from('media').getPublicUrl(path).data.publicUrl;
-    const { error } = await supabase.from('media_assets').insert({
-      title: file.name,
-      url: publicUrl,
-      path,
-      mime_type: file.type,
-      size_bytes: file.size,
-      created_by: session.user.id
+    const column = `value_${lang}`;
+    const next = { ...row, [column]: parseTextValue(value), updated_by: session.user.id };
+    setTexts((items) => items.map((item) => (item.key === row.key ? next : item)));
+    const { error } = await supabase.from('site_texts').upsert({
+      key: row.key,
+      value_ro: next.value_ro ?? '',
+      value_en: next.value_en ?? '',
+      value_ru: next.value_ru ?? '',
+      updated_by: session.user.id
     });
+    if (error) setMessage(error.message);
+  }
 
+  async function saveSettings(key: 'contact' | 'about', value: any) {
+    if (!supabase || !session) return;
+
+    setSaving(true);
+    const { error } = await supabase.from('app_settings').upsert({ key, value, updated_by: session.user.id });
     setSaving(false);
-    setMessage(error ? error.message : 'Fișierul a fost încărcat.');
-    await loadAll();
+    setMessage(error ? error.message : 'Setările au fost salvate.');
   }
 
-  async function deleteMedia(item: any) {
-    if (!supabase || !confirm('Ștergi acest fișier?')) {
-      return;
-    }
-
-    await supabase.storage.from('media').remove([item.path]);
-    const { error } = await supabase.from('media_assets').delete().eq('id', item.id);
-    setMessage(error ? error.message : 'Fișierul a fost șters.');
-    await loadAll();
-  }
-
-  async function updateBookingStatus(id: string, status: string) {
-    if (!supabase) {
-      return;
-    }
-
-    const { error } = await supabase.from('bookings').update({ status }).eq('id', id);
+  async function updateBookingStatus(bookingId: string, status: string) {
+    if (!supabase) return;
+    const { error } = await supabase.from('bookings').update({ status }).eq('id', bookingId);
     setMessage(error ? error.message : 'Rezervarea a fost actualizată.');
     await loadAll();
   }
 
   async function createMember(event: React.FormEvent) {
     event.preventDefault();
-    if (!session) {
-      return;
-    }
+    if (!session) return;
 
     setSaving(true);
     const response = await fetch('/api/admin/members', {
@@ -398,12 +473,10 @@ export function AdminPanel() {
     }
   }
 
-  async function deleteMember(id: string) {
-    if (!session || !confirm('Ștergi acest membru și contul lui de autentificare?')) {
-      return;
-    }
+  async function deleteMember(memberId: string) {
+    if (!session || !confirm('Ștergi acest membru?')) return;
 
-    const response = await fetch(`/api/admin/members?id=${id}`, {
+    const response = await fetch(`/api/admin/members?id=${memberId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${session.access_token}` }
     });
@@ -412,25 +485,35 @@ export function AdminPanel() {
     await loadMembers();
   }
 
-  const filteredAccommodations = accommodations.filter((item) => JSON.stringify(item).toLowerCase().includes(search.toLowerCase()));
-  const filteredTexts = texts.filter((item) => item.key.toLowerCase().includes(search.toLowerCase()) || JSON.stringify(item).toLowerCase().includes(search.toLowerCase()));
+  const listings = useMemo(
+    () => [
+      ...accommodations.map((item) => ({ ...item, kind: 'accommodation' as const })),
+      ...experiences.map((item) => ({ ...item, kind: 'experience' as const }))
+    ],
+    [accommodations, experiences]
+  );
+
+  const filteredListings = listings.filter((item) => {
+    const matchesType = listingFilter === 'all' || item.kind === listingFilter;
+    const matchesSearch = JSON.stringify(item).toLowerCase().includes(search.toLowerCase());
+    return matchesType && matchesSearch;
+  });
+
+  const filteredTexts = texts.filter((item) => JSON.stringify(item).toLowerCase().includes(search.toLowerCase()));
   const filteredMedia = media.filter((item) => JSON.stringify(item).toLowerCase().includes(search.toLowerCase()));
   const filteredBookings = bookings.filter((item) => JSON.stringify(item).toLowerCase().includes(search.toLowerCase()));
   const newBookings = bookings.filter((booking) => booking.status === 'new').length;
 
   if (loading) {
-    return <div className="min-h-screen bg-stone-100 p-8 text-stone-dark">Se încarcă adminul...</div>;
+    return <div className="min-h-screen bg-white p-8 text-forest-dark">Se încarcă adminul...</div>;
   }
 
   if (!supabase) {
     return (
-      <div className="min-h-screen bg-stone-100 p-8">
-        <div className="mx-auto max-w-xl rounded-lg bg-white p-8 shadow-sm">
+      <div className="min-h-screen bg-white p-8">
+        <div className="mx-auto max-w-xl rounded-2xl border border-stone-light p-8">
           <h1 className="mb-3 text-2xl font-bold text-forest-dark">Admin indisponibil</h1>
-          <p className="text-stone-dark">
-            Adaugă în Vercel/local env variabilele NEXT_PUBLIC_SUPABASE_URL și NEXT_PUBLIC_SUPABASE_ANON_KEY, apoi rulează migrarea din
-            <span className="font-mono"> supabase/migrations/0001_enterprise_cms.sql</span>.
-          </p>
+          <p className="text-stone-dark">Adaugă variabilele Supabase în `.env.local` sau în Vercel Environment Variables.</p>
         </div>
       </div>
     );
@@ -438,253 +521,241 @@ export function AdminPanel() {
 
   if (!session) {
     return (
-      <div className="min-h-screen bg-forest-dark px-4 py-12">
-        <form onSubmit={signIn} className="mx-auto max-w-md rounded-lg bg-cream p-8 shadow-xl">
-          <h1 className="mb-2 text-3xl font-bold text-forest-dark">Admin Grădina Mărioarei</h1>
-          <p className="mb-6 text-sm text-stone-dark">Autentificare pentru editarea completă a site-ului.</p>
-          <label className="mb-4 block text-sm font-semibold text-stone-dark">
-            Email
-            <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" className="mt-1 w-full rounded border border-stone-light px-3 py-2" required />
-          </label>
-          <label className="mb-6 block text-sm font-semibold text-stone-dark">
-            Parolă
-            <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" className="mt-1 w-full rounded border border-stone-light px-3 py-2" required />
-          </label>
-          {message && <p className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{message}</p>}
-          <button disabled={saving} className="btn-primary w-full">{saving ? 'Se intră...' : 'Intră în admin'}</button>
-        </form>
+      <div className="grid min-h-screen bg-white lg:grid-cols-[55%_45%]">
+        <div className="flex items-center justify-center px-6 py-12">
+          <form onSubmit={signIn} className="w-full max-w-md">
+            <div className="mb-10">
+              <div className="mb-4 flex items-center gap-3 text-forest-dark">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-forest text-white">
+                  <Home className="h-5 w-5" />
+                </div>
+                <span className="text-3xl font-extrabold">Grădina</span>
+              </div>
+              <span className="rounded-full border border-stone-light px-4 py-1 text-xs font-bold uppercase tracking-[0.25em] text-stone-dark">Host dashboard</span>
+              <h1 className="mt-8 text-4xl font-extrabold tracking-tight text-forest-dark">Intră în contul host</h1>
+              <p className="mt-4 text-stone-dark">Gestionezi listările, textele, rezervările și echipa direct dintr-un singur loc.</p>
+            </div>
+
+            <div className="rounded-[24px] border border-stone-light p-7 shadow-sm">
+              <label className="mb-5 block text-sm font-bold text-forest-dark">
+                Email
+                <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" className="mt-2 w-full rounded-2xl border border-stone-light px-4 py-4 outline-none focus:ring-2 focus:ring-forest" required />
+              </label>
+              <label className="mb-6 block text-sm font-bold text-forest-dark">
+                Parolă
+                <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" className="mt-2 w-full rounded-2xl border border-stone-light px-4 py-4 outline-none focus:ring-2 focus:ring-forest" required />
+              </label>
+              {message && <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{message}</p>}
+              <button disabled={saving} className="w-full rounded-2xl bg-forest px-5 py-4 font-bold text-white hover:bg-forest-light">
+                {saving ? 'Se conectează...' : 'Conectare'}
+              </button>
+            </div>
+          </form>
+        </div>
+        <div className="relative hidden overflow-hidden bg-forest-dark lg:block">
+          <img src="/casa_mare_interior.jpg" alt="" className="h-full w-full object-cover opacity-65" />
+          <div className="absolute inset-0 bg-forest-dark/30" />
+          <div className="absolute bottom-16 left-16 max-w-xl text-white">
+            <p className="mb-6 text-xs font-bold uppercase tracking-[0.45em]">Moldova stays</p>
+            <h2 className="text-5xl font-extrabold leading-tight">Hosts, experiențe și calendar într-un dashboard care lucrează.</h2>
+          </div>
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-[#f3f4f1] text-stone-dark">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-stone-light bg-white p-5 lg:block">
-        <div className="mb-8">
-          <p className="text-xs font-bold uppercase tracking-wider text-terracotta">CMS Enterprise</p>
-          <h1 className="mt-1 text-xl font-bold text-forest-dark">Grădina Mărioarei</h1>
-        </div>
-        <nav className="space-y-1">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-semibold transition ${activeTab === tab.id ? 'bg-forest text-white' : 'hover:bg-stone-light/40'}`}
-              >
-                <Icon className="h-4 w-4" />
-                {tab.label}
-              </button>
-            );
-          })}
-        </nav>
-      </aside>
+  const isEditor = section === 'listings' && (action === 'new' || action === 'edit');
 
-      <main className="lg:pl-72">
-        <header className="sticky top-0 z-20 border-b border-stone-light bg-white/95 px-4 py-4 backdrop-blur md:px-8">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-wrap gap-2 lg:hidden">
-              {tabs.map((tab) => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`rounded px-3 py-2 text-xs font-bold ${activeTab === tab.id ? 'bg-forest text-white' : 'bg-stone-light/50'}`}>
-                  {tab.label}
+  return (
+    <div className="min-h-screen bg-white text-forest-dark">
+      <header className="sticky top-0 z-30 border-b border-stone-light bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-5 py-3">
+          <button onClick={() => go('today')} className="flex items-center gap-2 text-2xl font-extrabold">
+            <Home className="h-7 w-7 text-forest" />
+            Grădina
+          </button>
+          <nav className="hidden items-center gap-2 md:flex">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button key={item.id} onClick={() => go(item.id)} className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold ${section === item.id ? 'bg-forest text-white' : 'text-stone-dark hover:bg-cream'}`}>
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </button>
+              );
+            })}
+          </nav>
+          <div className="flex items-center gap-3">
+            <button onClick={loadAll} className="hidden rounded-full border border-stone-light px-4 py-2 text-sm font-bold hover:bg-cream md:inline-flex">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Reîncarcă
+            </button>
+            <button onClick={signOut} className="rounded-full bg-terracotta px-4 py-2 text-sm font-bold text-white">
+              <LogOut className="mr-2 inline h-4 w-4" />
+              Ieși
+            </button>
+          </div>
+        </div>
+        <div className="mx-auto flex max-w-7xl gap-2 overflow-x-auto px-5 pb-3 md:hidden">
+          {navItems.map((item) => (
+            <button key={item.id} onClick={() => go(item.id)} className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold ${section === item.id ? 'bg-forest text-white' : 'bg-cream'}`}>
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-5 py-8">
+        {!isEditor && (
+          <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="relative w-full max-w-xl">
+              <Search className="absolute left-4 top-3.5 h-5 w-5 text-stone" />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Caută peste tot în secțiunea curentă..." className="w-full rounded-xl border border-stone-light bg-white py-3 pl-12 pr-4 outline-none focus:ring-2 focus:ring-forest" />
+            </div>
+            {section === 'listings' && (
+              <div className="flex gap-2">
+                <button onClick={() => go('listings', { action: 'new', kind: 'accommodation' })} className="rounded-full bg-forest px-5 py-3 text-sm font-bold text-white">
+                  <Plus className="mr-2 inline h-4 w-4" />
+                  Add cazare
+                </button>
+                <button onClick={() => go('listings', { action: 'new', kind: 'experience' })} className="rounded-full border border-stone-light px-5 py-3 text-sm font-bold hover:bg-cream">
+                  <Sparkles className="mr-2 inline h-4 w-4" />
+                  Add experiență
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {message && <p className="mb-6 rounded-xl bg-cream px-4 py-3 text-sm font-semibold">{message}</p>}
+
+        {section === 'today' && (
+          <section>
+            <p className="text-xs font-bold uppercase tracking-[0.35em] text-stone">Host workspace</p>
+            <h1 className="mt-3 text-4xl font-extrabold">Today</h1>
+            <div className="mt-8 grid gap-4 md:grid-cols-4">
+              <Metric title="Cazări" value={accommodations.length} />
+              <Metric title="Experiențe" value={experiences.length} />
+              <Metric title="Rezervări noi" value={newBookings} />
+              <Metric title="Traduceri" value={texts.length} />
+            </div>
+          </section>
+        )}
+
+        {section === 'listings' && !isEditor && (
+          <section>
+            <p className="text-xs font-bold uppercase tracking-[0.35em] text-stone">Host workspace</p>
+            <h1 className="mt-3 text-4xl font-extrabold">Your listings</h1>
+            <p className="mt-3 text-stone-dark">Vezi toate experiențele și cazările într-un singur loc.</p>
+            <div className="mt-8 flex gap-2">
+              {[
+                ['all', 'All'],
+                ['accommodation', 'Homes'],
+                ['experience', 'Experiences']
+              ].map(([value, label]) => (
+                <button key={value} onClick={() => setListingFilter(value as any)} className={`rounded-full px-5 py-2 text-sm font-bold ${listingFilter === value ? 'bg-forest text-white' : 'border border-stone-light hover:bg-cream'}`}>
+                  {label}
                 </button>
               ))}
             </div>
-            <div className="relative max-w-lg flex-1">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-stone" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Caută în lista curentă..." className="w-full rounded-md border border-stone-light bg-white py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-forest" />
+            <div className="mt-8 overflow-hidden rounded-[28px] border border-stone-light shadow-sm">
+              <table className="w-full min-w-[860px] text-left">
+                <thead className="bg-cream/70 text-xs uppercase tracking-wide text-stone-dark">
+                  <tr>
+                    <th className="px-6 py-4">Listing</th>
+                    <th className="px-6 py-4">Tip</th>
+                    <th className="px-6 py-4">Locație</th>
+                    <th className="px-6 py-4">Preț</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredListings.map((item) => (
+                    <tr key={`${item.kind}-${item.id}`} className="border-t border-stone-light hover:bg-cream/40">
+                      <td className="px-6 py-5">
+                        <button onClick={() => go('listings', { action: 'edit', kind: item.kind, id: item.id })} className="flex items-center gap-4 text-left">
+                          <img src={item.images?.[0] || '/casamare.jpg'} alt="" className="h-14 w-14 rounded-xl object-cover" />
+                          <span>
+                            <span className="block font-bold">{getLocalized(item.title, 'ro') || item.slug}</span>
+                            <span className="text-sm text-stone-dark">{item.slug}</span>
+                          </span>
+                        </button>
+                      </td>
+                      <td className="px-6 py-5">{item.kind === 'accommodation' ? 'Cazare' : 'Experiență'}</td>
+                      <td className="px-6 py-5">{getLocalized(item.location, 'ro') || '-'}</td>
+                      <td className="px-6 py-5">{money(item.kind === 'accommodation' ? item.price_per_night : item.price, item.currency)}</td>
+                      <td className="px-6 py-5">
+                        <span className={`rounded-full px-3 py-1 text-xs font-bold ${item.status === 'draft' || item.is_active === false ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
+                          {item.status || (item.is_active ? 'published' : 'draft')}
+                        </span>
+                      </td>
+                      <td className="px-6 py-5 text-right">
+                        <button onClick={() => go('listings', { action: 'edit', kind: item.kind, id: item.id })} className="rounded-full border border-stone-light p-2 hover:bg-cream">
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div className="flex items-center gap-3">
-              <button onClick={loadAll} className="btn-outline gap-2 py-2 text-sm"><RefreshCw className="h-4 w-4" /> Reîncarcă</button>
-              <button onClick={signOut} className="btn-secondary gap-2 py-2 text-sm"><LogOut className="h-4 w-4" /> Ieși</button>
-            </div>
-          </div>
-          {message && <p className="mt-3 rounded-md bg-cream px-3 py-2 text-sm text-forest-dark">{message}</p>}
-        </header>
+          </section>
+        )}
 
-        <div className="p-4 md:p-8">
-          {activeTab === 'dashboard' && (
-            <section>
-              <h2 className="mb-6 text-2xl font-bold text-forest-dark">Control complet</h2>
-              <div className="grid gap-4 md:grid-cols-4">
-                <Metric title="Cazări" value={accommodations.length} />
-                <Metric title="Texte traduse" value={texts.length} />
-                <Metric title="Fișiere" value={media.length} />
-                <Metric title="Rezervări noi" value={newBookings} />
-              </div>
-              <div className="mt-8 rounded-lg border border-stone-light bg-white p-6">
-                <h3 className="mb-3 text-lg font-bold text-forest-dark">Checklist inițial</h3>
-                <ul className="space-y-2 text-sm">
-                  <li>1. Rulează migrarea SQL în Supabase.</li>
-                  <li>2. Creează primul utilizator în Supabase Auth și setează rolul owner în admin_profiles.</li>
-                  <li>3. Importă textele implicite din tabul Texte.</li>
-                  <li>4. Încarcă imagini în Fișiere și folosește URL-urile în cazări sau texte.</li>
-                </ul>
-              </div>
-            </section>
-          )}
+        {section === 'listings' && isEditor && (
+          <ListingEditor
+            kind={kind}
+            language={language}
+            setLanguage={setLanguage}
+            editorTab={editorTab}
+            setEditorTab={setEditorTab}
+            draft={listingDraft}
+            setDraft={setListingDraft}
+            saving={saving}
+            onBack={() => go('listings')}
+            onSaveDraft={() => saveListing('draft')}
+            onPublish={() => saveListing('published')}
+            onDelete={listingDraft.id ? () => deleteListing(listingDraft, kind) : undefined}
+            onUpload={attachListingImages}
+          />
+        )}
 
-          {activeTab === 'accommodations' && (
-            <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_440px]">
-              <div className="space-y-4">
-                {filteredAccommodations.map((item) => (
-                  <div key={item.id} className="rounded-lg border border-stone-light bg-white p-5 shadow-sm">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-wider text-terracotta">{item.slug}</p>
-                        <h3 className="text-xl font-bold text-forest-dark">{item.title?.ro || item.slug}</h3>
-                        <p className="mt-2 line-clamp-2 text-sm">{item.description?.ro}</p>
-                        <p className="mt-2 text-sm font-semibold">{item.price_per_night ?? '-'} {item.currency} {item.discount_percent ? `- ${item.discount_percent}%` : ''}</p>
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => setAccommodationDraft(accommodationToDraft(item))} className="btn-outline py-2 text-sm">Editează</button>
-                        <button onClick={() => deleteAccommodation(item.id)} className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white"><Trash2 className="h-4 w-4" /></button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+        {section === 'translations' && (
+          <TranslationsTable
+            rows={filteredTexts}
+            editingCell={editingCell}
+            setEditingCell={setEditingCell}
+            onSave={saveTextCell}
+            onSeed={seedTexts}
+          />
+        )}
 
-              <form onSubmit={saveAccommodation} className="rounded-lg border border-stone-light bg-white p-5 shadow-sm">
-                <h3 className="mb-4 flex items-center gap-2 text-lg font-bold text-forest-dark"><Plus className="h-4 w-4" /> {accommodationDraft.id ? 'Editează cazare' : 'Adaugă cazare'}</h3>
-                <AdminInput label="Slug" value={accommodationDraft.slug} onChange={(value) => setAccommodationDraft({ ...accommodationDraft, slug: value })} required />
-                <ThreeLangInputs label="Titlu" draft={accommodationDraft} keys={['title_ro', 'title_en', 'title_ru']} setDraft={setAccommodationDraft} />
-                <ThreeLangAreas label="Descriere" draft={accommodationDraft} keys={['description_ro', 'description_en', 'description_ru']} setDraft={setAccommodationDraft} />
-                <ThreeLangAreas label="Facilități, una pe linie" draft={accommodationDraft} keys={['amenities_ro', 'amenities_en', 'amenities_ru']} setDraft={setAccommodationDraft} />
-                <AdminArea label="Imagini, un URL pe linie" value={accommodationDraft.images} onChange={(value) => setAccommodationDraft({ ...accommodationDraft, images: value })} />
-                <div className="grid grid-cols-2 gap-3">
-                  <AdminInput label="Preț" value={accommodationDraft.price_per_night} type="number" onChange={(value) => setAccommodationDraft({ ...accommodationDraft, price_per_night: value })} />
-                  <AdminInput label="Reducere %" value={accommodationDraft.discount_percent} type="number" onChange={(value) => setAccommodationDraft({ ...accommodationDraft, discount_percent: value })} />
-                  <AdminInput label="Valută" value={accommodationDraft.currency} onChange={(value) => setAccommodationDraft({ ...accommodationDraft, currency: value })} />
-                  <AdminInput label="Capacitate" value={accommodationDraft.capacity} type="number" onChange={(value) => setAccommodationDraft({ ...accommodationDraft, capacity: value })} />
-                  <AdminInput label="Ordine" value={accommodationDraft.sort_order} type="number" onChange={(value) => setAccommodationDraft({ ...accommodationDraft, sort_order: value })} />
-                </div>
-                <label className="mb-4 flex items-center gap-2 text-sm font-semibold">
-                  <input type="checkbox" checked={accommodationDraft.is_active} onChange={(event) => setAccommodationDraft({ ...accommodationDraft, is_active: event.target.checked })} />
-                  Activ pe site
-                </label>
-                <div className="flex gap-2">
-                  <button disabled={saving} className="btn-primary gap-2"><Save className="h-4 w-4" /> Salvează</button>
-                  <button type="button" onClick={() => setAccommodationDraft(emptyAccommodation)} className="btn-outline">Curăță</button>
-                </div>
-              </form>
-            </section>
-          )}
+        {section === 'media' && (
+          <MediaLibrary items={filteredMedia} onUpload={uploadFiles} />
+        )}
 
-          {activeTab === 'texts' && (
-            <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_460px]">
-              <div className="space-y-3">
-                <button onClick={seedTexts} className="btn-secondary gap-2 text-sm"><RefreshCw className="h-4 w-4" /> Importă textele implicite RO/EN/RU</button>
-                {filteredTexts.map((item) => (
-                  <div key={item.key} className="rounded-lg border border-stone-light bg-white p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="font-mono text-xs text-terracotta">{item.key}</p>
-                        <p className="mt-1 line-clamp-2 text-sm">{textValue(item.value_ro)}</p>
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => setTextDraft({ key: item.key, value_ro: textValue(item.value_ro), value_en: textValue(item.value_en), value_ru: textValue(item.value_ru) })} className="btn-outline py-2 text-sm">Editează</button>
-                        <button onClick={() => deleteText(item.key)} className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white"><Trash2 className="h-4 w-4" /></button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <form onSubmit={saveText} className="rounded-lg border border-stone-light bg-white p-5 shadow-sm">
-                <h3 className="mb-4 text-lg font-bold text-forest-dark">Text static / JSON</h3>
-                <AdminInput label="Cheie, ex: hero.welcome" value={textDraft.key} onChange={(value) => setTextDraft({ ...textDraft, key: value })} required />
-                <AdminArea label="RO" value={textDraft.value_ro} onChange={(value) => setTextDraft({ ...textDraft, value_ro: value })} />
-                <AdminArea label="EN" value={textDraft.value_en} onChange={(value) => setTextDraft({ ...textDraft, value_en: value })} />
-                <AdminArea label="RU" value={textDraft.value_ru} onChange={(value) => setTextDraft({ ...textDraft, value_ru: value })} />
-                <button disabled={saving} className="btn-primary gap-2"><Save className="h-4 w-4" /> Salvează textul</button>
-              </form>
-            </section>
-          )}
+        {section === 'bookings' && (
+          <BookingsTable rows={filteredBookings} onStatus={updateBookingStatus} />
+        )}
 
-          {activeTab === 'media' && (
-            <section>
-              <div className="mb-6 rounded-lg border border-stone-light bg-white p-5">
-                <label className="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-stone-light p-8 text-center hover:bg-cream">
-                  <Upload className="mb-2 h-8 w-8 text-forest" />
-                  <span className="font-semibold">Upload fișier cu preview</span>
-                  <span className="text-sm text-stone">Imagine, PDF sau alt fișier acceptat de bucket</span>
-                  <input type="file" onChange={uploadMedia} className="hidden" />
-                </label>
-                {filePreview && <img src={filePreview} alt="Preview upload" className="mt-4 h-40 rounded object-cover" />}
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {filteredMedia.map((item) => (
-                  <div key={item.id} className="rounded-lg border border-stone-light bg-white p-3 shadow-sm">
-                    {item.mime_type?.startsWith('image/') ? <img src={item.url} alt={item.title} className="h-40 w-full rounded object-cover" /> : <div className="flex h-40 items-center justify-center rounded bg-cream"><FileText /></div>}
-                    <p className="mt-3 truncate text-sm font-semibold">{item.title}</p>
-                    <input readOnly value={item.url} className="mt-2 w-full rounded border border-stone-light px-2 py-1 text-xs" />
-                    <button onClick={() => deleteMedia(item)} className="mt-3 flex items-center gap-2 rounded bg-red-600 px-3 py-2 text-sm font-semibold text-white"><Trash2 className="h-4 w-4" /> Șterge</button>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
+        {section === 'settings' && (
+          <SettingsPage
+            language={language}
+            setLanguage={setLanguage}
+            contact={contactSettings}
+            setContact={setContactSettings}
+            about={aboutSettings}
+            setAbout={setAboutSettings}
+            onUpload={uploadFiles}
+            onSaveContact={() => saveSettings('contact', contactSettings)}
+            onSaveAbout={() => saveSettings('about', aboutSettings)}
+          />
+        )}
 
-          {activeTab === 'bookings' && (
-            <section className="space-y-4">
-              {filteredBookings.map((booking) => (
-                <div key={booking.id} className="rounded-lg border border-stone-light bg-white p-5 shadow-sm">
-                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-wider text-terracotta">{booking.status} · {new Date(booking.created_at).toLocaleString('ro-MD')}</p>
-                      <h3 className="mt-1 text-xl font-bold text-forest-dark">{booking.full_name}</h3>
-                      <p className="text-sm">{booking.checkin} - {booking.checkout}, {booking.guests} oaspeți</p>
-                      <p className="text-sm">{booking.unit_label}</p>
-                      <p className="mt-2 text-sm">{booking.phone} · {booking.email}</p>
-                      {booking.notes && <p className="mt-2 rounded bg-cream p-3 text-sm">{booking.notes}</p>}
-                    </div>
-                    <select value={booking.status} onChange={(event) => updateBookingStatus(booking.id, event.target.value)} className="rounded border border-stone-light px-3 py-2 text-sm">
-                      <option value="new">Nouă</option>
-                      <option value="confirmed">Confirmată</option>
-                      <option value="cancelled">Anulată</option>
-                      <option value="archived">Arhivată</option>
-                    </select>
-                  </div>
-                </div>
-              ))}
-            </section>
-          )}
-
-          {activeTab === 'members' && (
-            <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-              <div className="space-y-3">
-                {members.map((member) => (
-                  <div key={member.id} className="rounded-lg border border-stone-light bg-white p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h3 className="font-bold text-forest-dark">{member.full_name || member.email}</h3>
-                        <p className="text-sm">{member.email}</p>
-                        <p className="mt-1 text-xs font-bold uppercase tracking-wider text-terracotta">{member.role}</p>
-                      </div>
-                      <button onClick={() => deleteMember(member.id)} className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white"><Trash2 className="h-4 w-4" /></button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <form onSubmit={createMember} className="rounded-lg border border-stone-light bg-white p-5 shadow-sm">
-                <h3 className="mb-4 flex items-center gap-2 text-lg font-bold text-forest-dark"><UserPlus className="h-4 w-4" /> Adaugă membru</h3>
-                <AdminInput label="Nume" value={memberDraft.full_name} onChange={(value) => setMemberDraft({ ...memberDraft, full_name: value })} />
-                <AdminInput label="Email" value={memberDraft.email} type="email" onChange={(value) => setMemberDraft({ ...memberDraft, email: value })} required />
-                <AdminInput label="Parolă temporară" value={memberDraft.password} type="password" onChange={(value) => setMemberDraft({ ...memberDraft, password: value })} required />
-                <label className="mb-4 block text-sm font-semibold text-stone-dark">
-                  Rol
-                  <select value={memberDraft.role} onChange={(event) => setMemberDraft({ ...memberDraft, role: event.target.value })} className="mt-1 w-full rounded border border-stone-light px-3 py-2">
-                    <option value="editor">Editor</option>
-                    <option value="admin">Admin</option>
-                    <option value="viewer">Viewer</option>
-                  </select>
-                </label>
-                <button disabled={saving} className="btn-primary gap-2"><UserPlus className="h-4 w-4" /> Creează cont</button>
-              </form>
-            </section>
-          )}
-        </div>
+        {section === 'members' && (
+          <MembersPage members={members} draft={memberDraft} setDraft={setMemberDraft} onCreate={createMember} onDelete={deleteMember} saving={saving} />
+        )}
       </main>
     </div>
   );
@@ -692,47 +763,456 @@ export function AdminPanel() {
 
 function Metric({ title, value }: { title: string; value: number }) {
   return (
-    <div className="rounded-lg border border-stone-light bg-white p-5 shadow-sm">
-      <p className="text-sm font-semibold text-stone">{title}</p>
-      <p className="mt-2 text-3xl font-bold text-forest-dark">{value}</p>
+    <div className="rounded-2xl border border-stone-light p-5">
+      <p className="text-sm font-bold text-stone">{title}</p>
+      <p className="mt-2 text-4xl font-extrabold">{value}</p>
     </div>
   );
 }
 
-function AdminInput({ label, value, onChange, type = 'text', required = false }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean }) {
+function LangTabs({ value, onChange }: { value: Lang; onChange: (lang: Lang) => void }) {
   return (
-    <label className="mb-4 block text-sm font-semibold text-stone-dark">
-      {label}
-      <input value={value} onChange={(event) => onChange(event.target.value)} type={type} required={required} className="mt-1 w-full rounded border border-stone-light px-3 py-2 outline-none focus:ring-2 focus:ring-forest" />
+    <div className="flex flex-wrap gap-2">
+      {languages.map((lang) => (
+        <button key={lang.id} onClick={() => onChange(lang.id)} className={`rounded-full px-4 py-2 text-sm font-bold ${value === lang.id ? 'bg-yellow-400 text-forest-dark' : 'border border-stone-light hover:bg-cream'}`}>
+          {lang.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ListingEditor(props: {
+  kind: ListingKind;
+  language: Lang;
+  setLanguage: (lang: Lang) => void;
+  editorTab: EditorTab;
+  setEditorTab: (tab: EditorTab) => void;
+  draft: any;
+  setDraft: React.Dispatch<React.SetStateAction<any>>;
+  saving: boolean;
+  onBack: () => void;
+  onSaveDraft: () => void;
+  onPublish: () => void;
+  onDelete?: () => void;
+  onUpload: (files: FileList | null) => void;
+}) {
+  const { kind, language, setLanguage, editorTab, setEditorTab, draft, setDraft, saving, onBack, onSaveDraft, onPublish, onDelete, onUpload } = props;
+  const collectionKey = kind === 'accommodation' ? 'amenities' : 'highlights';
+
+  function setLocalized(field: string, value: string) {
+    setDraft((current: any) => ({ ...current, [field]: { ...current[field], [language]: value } }));
+  }
+
+  function setCollection(value: string) {
+    setDraft((current: any) => ({
+      ...current,
+      [collectionKey]: { ...current[collectionKey], [language]: fromLines(value) }
+    }));
+  }
+
+  function setSeo(field: string, value: string) {
+    setDraft((current: any) => ({
+      ...current,
+      seo: {
+        ...current.seo,
+        [language]: { ...current.seo[language], [field]: value }
+      }
+    }));
+  }
+
+  return (
+    <section>
+      <button onClick={onBack} className="mb-6 inline-flex items-center gap-2 rounded-full border border-stone-light px-4 py-2 text-sm font-bold hover:bg-cream">
+        <ArrowLeft className="h-4 w-4" />
+        Înapoi la listă
+      </button>
+      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.35em] text-stone">{kind === 'accommodation' ? 'Cazare' : 'Experiență'}</p>
+          <h1 className="mt-2 text-4xl font-extrabold">{draft.id ? 'Edit listing' : 'Create listing'}</h1>
+        </div>
+        <div className="flex gap-2">
+          {onDelete && (
+            <button onClick={onDelete} className="rounded-full border border-red-200 px-5 py-3 text-sm font-bold text-red-700 hover:bg-red-50">
+              <Trash2 className="mr-2 inline h-4 w-4" />
+              Delete
+            </button>
+          )}
+          <button onClick={onSaveDraft} disabled={saving} className="rounded-full border border-stone-light px-5 py-3 text-sm font-bold hover:bg-cream">Save as draft</button>
+          <button onClick={onPublish} disabled={saving} className="rounded-full bg-forest px-5 py-3 text-sm font-bold text-white">Publish</button>
+        </div>
+      </div>
+
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <button onClick={() => setEditorTab('data')} className={`rounded-xl px-4 py-3 text-sm font-bold ${editorTab === 'data' ? 'bg-cream shadow-sm' : 'hover:bg-cream'}`}>
+          <BedDouble className="mr-2 inline h-4 w-4" />
+          Data
+        </button>
+        <button onClick={() => setEditorTab('seo')} className={`rounded-xl px-4 py-3 text-sm font-bold ${editorTab === 'seo' ? 'bg-cream shadow-sm' : 'hover:bg-cream'}`}>
+          <FileText className="mr-2 inline h-4 w-4" />
+          SEO
+        </button>
+        <div className="ml-0 md:ml-4">
+          <LangTabs value={language} onChange={setLanguage} />
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        {editorTab === 'data' && (
+          <>
+            <Panel title="Basic information">
+              <div className="grid gap-5 md:grid-cols-2">
+                <Field label="Titlu">
+                  <input value={draft.title[language]} onChange={(event) => setLocalized('title', event.target.value)} className="admin-input" placeholder="Enter name" />
+                </Field>
+                <Field label="Slug">
+                  <input value={draft.slug} onChange={(event) => setDraft((current: any) => ({ ...current, slug: event.target.value }))} className="admin-input" placeholder="slug-url" />
+                </Field>
+                <Field label="Locație">
+                  <input value={draft.location[language]} onChange={(event) => setLocalized('location', event.target.value)} className="admin-input" placeholder="Vălcineț, Călărași" />
+                </Field>
+                <Field label="Status">
+                  <select value={draft.status} onChange={(event) => setDraft((current: any) => ({ ...current, status: event.target.value }))} className="admin-input">
+                    <option value="draft">Draft</option>
+                    <option value="published">Published</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                </Field>
+              </div>
+              <Field label="Descriere">
+                <textarea value={draft.description[language]} onChange={(event) => setLocalized('description', event.target.value)} rows={6} className="admin-input" />
+              </Field>
+            </Panel>
+
+            <Panel title={kind === 'accommodation' ? 'Pricing și facilități' : 'Pricing și highlights'}>
+              <div className="grid gap-5 md:grid-cols-4">
+                <Field label="Preț">
+                  <input value={kind === 'accommodation' ? draft.price_per_night : draft.price} onChange={(event) => setDraft((current: any) => ({ ...current, [kind === 'accommodation' ? 'price_per_night' : 'price']: event.target.value }))} type="number" className="admin-input" />
+                </Field>
+                <Field label="Valută">
+                  <input value={draft.currency} onChange={(event) => setDraft((current: any) => ({ ...current, currency: event.target.value }))} className="admin-input" />
+                </Field>
+                {kind === 'accommodation' && (
+                  <Field label="Reducere %">
+                    <input value={draft.discount_percent} onChange={(event) => setDraft((current: any) => ({ ...current, discount_percent: event.target.value }))} type="number" className="admin-input" />
+                  </Field>
+                )}
+                {kind === 'experience' && (
+                  <Field label="Durată minute">
+                    <input value={draft.duration_minutes} onChange={(event) => setDraft((current: any) => ({ ...current, duration_minutes: event.target.value }))} type="number" className="admin-input" />
+                  </Field>
+                )}
+                <Field label="Capacitate">
+                  <input value={draft.capacity} onChange={(event) => setDraft((current: any) => ({ ...current, capacity: event.target.value }))} type="number" className="admin-input" />
+                </Field>
+              </div>
+              <Field label={kind === 'accommodation' ? 'Facilități, una pe linie' : 'Highlights, unul pe linie'}>
+                <textarea value={asLines(draft[collectionKey][language])} onChange={(event) => setCollection(event.target.value)} rows={6} className="admin-input" />
+              </Field>
+            </Panel>
+
+            <Panel title="Amenities și media">
+              <div className="grid gap-5 md:grid-cols-[1fr_280px]">
+                <label className="flex min-h-32 cursor-pointer items-center justify-center rounded-2xl border-2 border-dashed border-stone-light p-6 hover:bg-cream">
+                  <input type="file" multiple className="hidden" onChange={(event) => onUpload(event.target.files)} />
+                  <span className="text-center font-bold">
+                    <Upload className="mx-auto mb-2 h-7 w-7" />
+                    Încarcă imagini din calculator
+                  </span>
+                </label>
+                <Field label="Ordine">
+                  <input value={draft.sort_order} onChange={(event) => setDraft((current: any) => ({ ...current, sort_order: event.target.value }))} type="number" className="admin-input" />
+                </Field>
+              </div>
+              <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {(draft.images ?? []).map((image: string, index: number) => (
+                  <div key={image} className="group relative overflow-hidden rounded-2xl border border-stone-light">
+                    <img src={image} alt="" className="h-44 w-full object-cover" />
+                    <button onClick={() => setDraft((current: any) => ({ ...current, images: current.images.filter((_: string, imgIndex: number) => imgIndex !== index) }))} className="absolute right-2 top-2 rounded-full bg-white p-2 text-red-600 shadow">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+          </>
+        )}
+
+        {editorTab === 'seo' && (
+          <Panel title="SEO">
+            <div className="grid gap-5">
+              <Field label="SEO title">
+                <input value={draft.seo[language].title} onChange={(event) => setSeo('title', event.target.value)} className="admin-input" />
+              </Field>
+              <Field label="SEO description">
+                <textarea value={draft.seo[language].description} onChange={(event) => setSeo('description', event.target.value)} rows={5} className="admin-input" />
+              </Field>
+              <Field label="SEO keywords">
+                <input value={draft.seo[language].keywords} onChange={(event) => setSeo('keywords', event.target.value)} className="admin-input" placeholder="cazare, pensiune, Vălcineț" />
+              </Field>
+            </div>
+          </Panel>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-[28px] border border-stone-light p-6 shadow-sm">
+      <h2 className="mb-6 text-xl font-extrabold">{title}</h2>
+      <div className="space-y-5">{children}</div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block text-sm font-bold">
+      <span className="mb-2 block">{label}</span>
+      {children}
     </label>
   );
 }
 
-function AdminArea({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function TranslationsTable(props: {
+  rows: any[];
+  editingCell: { key: string; lang: Lang } | null;
+  setEditingCell: (cell: { key: string; lang: Lang } | null) => void;
+  onSave: (row: any, lang: Lang, value: string) => void;
+  onSeed: () => void;
+}) {
+  const { rows, editingCell, setEditingCell, onSave, onSeed } = props;
+
   return (
-    <label className="mb-4 block text-sm font-semibold text-stone-dark">
-      {label}
-      <textarea value={value} onChange={(event) => onChange(event.target.value)} rows={4} className="mt-1 w-full rounded border border-stone-light px-3 py-2 font-mono text-sm outline-none focus:ring-2 focus:ring-forest" />
-    </label>
+    <section>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.35em] text-stone">Frontend</p>
+          <h1 className="mt-2 text-4xl font-extrabold">Translations</h1>
+        </div>
+        <button onClick={onSeed} className="rounded-full bg-yellow-400 px-5 py-3 text-sm font-bold text-forest-dark">Importă cheile implicite</button>
+      </div>
+      <div className="overflow-hidden rounded-2xl border border-stone-light">
+        <table className="w-full min-w-[1000px] text-left">
+          <thead className="bg-cream/80 text-xs uppercase tracking-wide text-stone-dark">
+            <tr>
+              <th className="px-5 py-4">Type</th>
+              <th className="px-5 py-4">Group/Model</th>
+              <th className="px-5 py-4">Section/ID</th>
+              <th className="px-5 py-4">Key/Column</th>
+              <th className="px-5 py-4">Value EN</th>
+              <th className="px-5 py-4">Value RU</th>
+              <th className="px-5 py-4">Value RO</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const parts = row.key.split('.');
+              return (
+                <tr key={row.key} className="border-t border-stone-light hover:bg-cream/30">
+                  <td className="px-5 py-5">Static</td>
+                  <td className="px-5 py-5">frontend</td>
+                  <td className="px-5 py-5">{parts[0] ?? '-'}</td>
+                  <td className="px-5 py-5 font-mono text-sm">{parts.slice(1).join('.') || row.key}</td>
+                  {(['en', 'ru', 'ro'] as Lang[]).map((lang) => (
+                    <EditableTranslationCell key={lang} row={row} lang={lang} editing={Boolean(editingCell && editingCell.key === row.key && editingCell.lang === lang)} onEdit={() => setEditingCell({ key: row.key, lang })} onDone={() => setEditingCell(null)} onSave={onSave} />
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
-function ThreeLangInputs({ label, draft, keys, setDraft }: { label: string; draft: AccommodationDraft; keys: Array<keyof AccommodationDraft>; setDraft: (draft: AccommodationDraft) => void }) {
+function EditableTranslationCell({ row, lang, editing, onEdit, onDone, onSave }: { row: any; lang: Lang; editing: boolean; onEdit: () => void; onDone: () => void; onSave: (row: any, lang: Lang, value: string) => void }) {
+  const [value, setValue] = useState(textValue(row[`value_${lang}`]));
+
+  useEffect(() => {
+    setValue(textValue(row[`value_${lang}`]));
+  }, [lang, row]);
+
+  if (editing) {
+    return (
+      <td className="px-5 py-5 align-top">
+        <div className="flex items-center gap-2">
+          <textarea value={value} onChange={(event) => setValue(event.target.value)} autoFocus rows={2} className="w-full rounded-lg border-2 border-yellow-400 px-3 py-2 outline-none focus:ring-2 focus:ring-forest" />
+          <button onClick={() => { onSave(row, lang, value); onDone(); }} className="rounded-full bg-forest p-2 text-white">
+            <Check className="h-4 w-4" />
+          </button>
+        </div>
+      </td>
+    );
+  }
+
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-      <AdminInput label={`${label} RO`} value={String(draft[keys[0]] ?? '')} onChange={(value) => setDraft({ ...draft, [keys[0]]: value })} />
-      <AdminInput label={`${label} EN`} value={String(draft[keys[1]] ?? '')} onChange={(value) => setDraft({ ...draft, [keys[1]]: value })} />
-      <AdminInput label={`${label} RU`} value={String(draft[keys[2]] ?? '')} onChange={(value) => setDraft({ ...draft, [keys[2]]: value })} />
-    </div>
+    <td onClick={onEdit} className="cursor-text px-5 py-5 align-top hover:bg-yellow-50">
+      <div className="line-clamp-3 whitespace-pre-wrap">{value}</div>
+    </td>
   );
 }
 
-function ThreeLangAreas({ label, draft, keys, setDraft }: { label: string; draft: AccommodationDraft; keys: Array<keyof AccommodationDraft>; setDraft: (draft: AccommodationDraft) => void }) {
+function MediaLibrary({ items, onUpload }: { items: any[]; onUpload: (files: FileList | null) => void }) {
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-      <AdminArea label={`${label} RO`} value={String(draft[keys[0]] ?? '')} onChange={(value) => setDraft({ ...draft, [keys[0]]: value })} />
-      <AdminArea label={`${label} EN`} value={String(draft[keys[1]] ?? '')} onChange={(value) => setDraft({ ...draft, [keys[1]]: value })} />
-      <AdminArea label={`${label} RU`} value={String(draft[keys[2]] ?? '')} onChange={(value) => setDraft({ ...draft, [keys[2]]: value })} />
-    </div>
+    <section>
+      <h1 className="text-4xl font-extrabold">Media</h1>
+      <label className="mt-8 flex cursor-pointer items-center justify-center rounded-[28px] border-2 border-dashed border-stone-light p-10 hover:bg-cream">
+        <input type="file" multiple className="hidden" onChange={(event) => onUpload(event.target.files)} />
+        <span className="text-center font-bold">
+          <Upload className="mx-auto mb-2 h-8 w-8" />
+          Încarcă fișiere din calculator
+        </span>
+      </label>
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {items.map((item) => (
+          <div key={item.id} className="rounded-2xl border border-stone-light p-3">
+            {item.mime_type?.startsWith('image/') ? <img src={item.url} alt={item.title} className="h-44 w-full rounded-xl object-cover" /> : <div className="flex h-44 items-center justify-center rounded-xl bg-cream"><FileText /></div>}
+            <p className="mt-3 truncate text-sm font-bold">{item.title}</p>
+            <input readOnly value={item.url} className="mt-2 w-full rounded-lg border border-stone-light px-2 py-2 text-xs" />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function BookingsTable({ rows, onStatus }: { rows: any[]; onStatus: (id: string, status: string) => void }) {
+  return (
+    <section>
+      <h1 className="text-4xl font-extrabold">Rezervări</h1>
+      <div className="mt-8 space-y-4">
+        {rows.map((booking) => (
+          <div key={booking.id} className="rounded-2xl border border-stone-light p-5">
+            <div className="flex flex-col gap-4 md:flex-row md:justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-terracotta">{new Date(booking.created_at).toLocaleString('ro-MD')}</p>
+                <h3 className="mt-1 text-xl font-extrabold">{booking.full_name}</h3>
+                <p>{booking.checkin} - {booking.checkout}, {booking.guests} oaspeți</p>
+                <p>{booking.phone} · {booking.email}</p>
+                {booking.notes && <p className="mt-3 rounded-xl bg-cream p-3">{booking.notes}</p>}
+              </div>
+              <select value={booking.status} onChange={(event) => onStatus(booking.id, event.target.value)} className="admin-input md:w-48">
+                <option value="new">Nouă</option>
+                <option value="confirmed">Confirmată</option>
+                <option value="cancelled">Anulată</option>
+                <option value="archived">Arhivată</option>
+              </select>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SettingsPage(props: {
+  language: Lang;
+  setLanguage: (lang: Lang) => void;
+  contact: any;
+  setContact: React.Dispatch<React.SetStateAction<any>>;
+  about: any;
+  setAbout: React.Dispatch<React.SetStateAction<any>>;
+  onUpload: (files: FileList | null) => Promise<string[]>;
+  onSaveContact: () => void;
+  onSaveAbout: () => void;
+}) {
+  const { language, setLanguage, contact, setContact, about, setAbout, onUpload, onSaveContact, onSaveAbout } = props;
+
+  return (
+    <section>
+      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.35em] text-stone">Settings</p>
+          <h1 className="mt-2 text-4xl font-extrabold">Setări site</h1>
+        </div>
+        <LangTabs value={language} onChange={setLanguage} />
+      </div>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Panel title="Contact">
+          <Field label="Telefon">
+            <input value={contact.phone} onChange={(event) => setContact((current: any) => ({ ...current, phone: event.target.value }))} className="admin-input" />
+          </Field>
+          <Field label="Email">
+            <input value={contact.email} onChange={(event) => setContact((current: any) => ({ ...current, email: event.target.value }))} className="admin-input" />
+          </Field>
+          <Field label="Adresă">
+            <input value={contact.address?.[language] ?? ''} onChange={(event) => setContact((current: any) => ({ ...current, address: { ...current.address, [language]: event.target.value } }))} className="admin-input" />
+          </Field>
+          <Field label="Google Map URL">
+            <input value={contact.map_url} onChange={(event) => setContact((current: any) => ({ ...current, map_url: event.target.value }))} className="admin-input" />
+          </Field>
+          <div className="grid gap-4 md:grid-cols-3">
+            <Field label="Facebook"><input value={contact.facebook} onChange={(event) => setContact((current: any) => ({ ...current, facebook: event.target.value }))} className="admin-input" /></Field>
+            <Field label="Instagram"><input value={contact.instagram} onChange={(event) => setContact((current: any) => ({ ...current, instagram: event.target.value }))} className="admin-input" /></Field>
+            <Field label="TikTok"><input value={contact.tiktok} onChange={(event) => setContact((current: any) => ({ ...current, tiktok: event.target.value }))} className="admin-input" /></Field>
+          </div>
+          <button onClick={onSaveContact} className="rounded-full bg-forest px-5 py-3 text-sm font-bold text-white"><Save className="mr-2 inline h-4 w-4" /> Salvează contact</button>
+        </Panel>
+
+        <Panel title="Pagina Despre Noi">
+          <Field label="Titlu">
+            <input value={about.headline?.[language] ?? ''} onChange={(event) => setAbout((current: any) => ({ ...current, headline: { ...current.headline, [language]: event.target.value } }))} className="admin-input" />
+          </Field>
+          <Field label="Poveste">
+            <textarea value={about.story?.[language] ?? ''} onChange={(event) => setAbout((current: any) => ({ ...current, story: { ...current.story, [language]: event.target.value } }))} rows={6} className="admin-input" />
+          </Field>
+          <Field label="Misiune">
+            <textarea value={about.mission?.[language] ?? ''} onChange={(event) => setAbout((current: any) => ({ ...current, mission: { ...current.mission, [language]: event.target.value } }))} rows={4} className="admin-input" />
+          </Field>
+          <label className="flex cursor-pointer items-center justify-center rounded-2xl border-2 border-dashed border-stone-light p-6 hover:bg-cream">
+            <input type="file" className="hidden" onChange={async (event) => {
+              const urls = await onUpload(event.target.files);
+              if (urls[0]) setAbout((current: any) => ({ ...current, image: urls[0] }));
+            }} />
+            <span className="font-bold"><Upload className="mr-2 inline h-4 w-4" /> Încarcă imagine</span>
+          </label>
+          {about.image && <img src={about.image} alt="" className="h-48 rounded-2xl object-cover" />}
+          <button onClick={onSaveAbout} className="rounded-full bg-forest px-5 py-3 text-sm font-bold text-white"><Save className="mr-2 inline h-4 w-4" /> Salvează Despre Noi</button>
+        </Panel>
+      </div>
+    </section>
+  );
+}
+
+function MembersPage(props: { members: any[]; draft: any; setDraft: (draft: any) => void; onCreate: (event: React.FormEvent) => void; onDelete: (id: string) => void; saving: boolean }) {
+  const { members, draft, setDraft, onCreate, onDelete, saving } = props;
+
+  return (
+    <section className="grid gap-6 lg:grid-cols-[1fr_420px]">
+      <div>
+        <h1 className="mb-8 text-4xl font-extrabold">Echipă</h1>
+        <div className="space-y-3">
+          {members.map((member) => (
+            <div key={member.id} className="flex items-center justify-between rounded-2xl border border-stone-light p-5">
+              <div>
+                <h3 className="font-extrabold">{member.full_name || member.email}</h3>
+                <p className="text-sm">{member.email}</p>
+                <p className="mt-1 text-xs font-bold uppercase tracking-wider text-terracotta">{member.role}</p>
+              </div>
+              <button onClick={() => onDelete(member.id)} className="rounded-full bg-red-600 p-3 text-white"><Trash2 className="h-4 w-4" /></button>
+            </div>
+          ))}
+        </div>
+      </div>
+      <form onSubmit={onCreate} className="rounded-[28px] border border-stone-light p-6 shadow-sm">
+        <h2 className="mb-6 text-xl font-extrabold"><UserPlus className="mr-2 inline h-5 w-5" /> Adaugă membru</h2>
+        <Field label="Nume"><input value={draft.full_name} onChange={(event) => setDraft({ ...draft, full_name: event.target.value })} className="admin-input" /></Field>
+        <Field label="Email"><input value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} type="email" className="admin-input" required /></Field>
+        <Field label="Parolă temporară"><input value={draft.password} onChange={(event) => setDraft({ ...draft, password: event.target.value })} type="password" className="admin-input" required /></Field>
+        <Field label="Rol">
+          <select value={draft.role} onChange={(event) => setDraft({ ...draft, role: event.target.value })} className="admin-input">
+            <option value="editor">Editor</option>
+            <option value="admin">Admin</option>
+            <option value="viewer">Viewer</option>
+          </select>
+        </Field>
+        <button disabled={saving} className="mt-2 rounded-full bg-forest px-5 py-3 text-sm font-bold text-white">Creează cont</button>
+      </form>
+    </section>
   );
 }

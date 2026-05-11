@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { AdminPanel } from '@/src/components/admin/AdminPanel';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,5 +12,5 @@ export const metadata: Metadata = {
 };
 
 export default function AdminPage() {
-  return <AdminPanel />;
+  redirect('/admin/today');
 }
