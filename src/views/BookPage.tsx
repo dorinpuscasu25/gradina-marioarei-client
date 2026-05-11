@@ -3,8 +3,13 @@ import { SectionHeading } from '../components/SectionHeading';
 import { BookingForm } from '../components/BookingForm';
 import { ScrollReveal } from '../components/ScrollReveal';
 import type { I18nProps } from '../i18n/types';
+import type { BookingUnit } from '@/src/lib/cms/types';
 
-export function BookPage({ t }: I18nProps) {
+type BookPageProps = I18nProps & {
+  units: BookingUnit[];
+};
+
+export function BookPage({ t, units }: BookPageProps) {
   return (
     <div className="pt-32 pb-20 min-h-screen bg-cream">
       <div className="container-custom">
@@ -14,6 +19,7 @@ export function BookPage({ t }: I18nProps) {
           <ScrollReveal width="100%">
             <div className="max-w-2xl mx-auto">
               <BookingForm
+                units={units}
                 labels={{
                   title: t('booking.title'),
                   subtitle: t('booking.subtitle'),

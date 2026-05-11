@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 import { notFound } from 'next/navigation';
 import { Header } from '@/src/components/Header';
 import { Footer } from '@/src/components/Footer';
-import { createTranslator, isLanguage } from '@/src/i18n/server';
+import { isLanguage } from '@/src/i18n/server';
+import { createCmsTranslator } from '@/src/lib/cms/data';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,7 @@ export default async function LangLayout({ children, params }: LayoutProps) {
     notFound();
   }
 
-  const t = createTranslator(lang);
+  const t = await createCmsTranslator(lang);
 
   return (
     <div className="flex flex-col min-h-screen font-sans text-dark bg-cream selection:bg-terracotta selection:text-white">

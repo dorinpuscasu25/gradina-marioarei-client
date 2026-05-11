@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import { HomePage } from '@/src/views/HomePage';
 import { notFound } from 'next/navigation';
-import { createTranslator, isLanguage } from '@/src/i18n/server';
+import { isLanguage } from '@/src/i18n/server';
 import { buildPageMetadata, SITE_NAME, SITE_URL } from '@/src/seo/metadata';
+import { createCmsTranslator, getAccommodations } from '@/src/lib/cms/data';
 
 type PageProps = {
   params: Promise<{ lang: string }>;
@@ -21,7 +22,8 @@ export default async function HomeRoute({ params }: PageProps) {
   if (!isLanguage(lang)) {
     notFound();
   }
-  const t = createTranslator(lang);
+  const t = await createCmsTranslator(lang);
+  const accommodations = await getAccommodations(lang);
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': 'LodgingBusiness',
@@ -44,7 +46,7 @@ export default async function HomeRoute({ params }: PageProps) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-      <HomePage lang={lang} t={t} />
+      <HomePage lang={lang} t={t} accommodations={accommodations} />
     </>
   );
 }

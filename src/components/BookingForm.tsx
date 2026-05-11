@@ -2,8 +2,10 @@
 
 import React, { useState } from 'react';
 import { Calendar, Users, Home, MessageSquare, CheckCircle } from 'lucide-react';
+import type { BookingUnit } from '@/src/lib/cms/types';
 
 type BookingFormProps = {
+  units: BookingUnit[];
   labels: {
     title: string;
     subtitle: string;
@@ -24,18 +26,44 @@ type BookingFormProps = {
   };
 };
 
-export function BookingForm({ labels }: BookingFormProps) {
+export function BookingForm({ labels, units }: BookingFormProps) {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
 
-    setTimeout(() => {
+    const form = new FormData(e.currentTarget);
+    const selectedUnit = units.find((unit) => unit.id === form.get('accommodation_id'));
+    const response = await fetch('/api/bookings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        accommodation_id: form.get('accommodation_id'),
+        unit_label: selectedUnit ? `${selectedUnit.title} - ${selectedUnit.price}` : '',
+        checkin: form.get('checkin'),
+        checkout: form.get('checkout'),
+        guests: form.get('guests'),
+        full_name: form.get('full_name'),
+        phone: form.get('phone'),
+        email: form.get('email'),
+        notes: form.get('notes')
+      })
+    });
+
+    if (response.ok) {
       setLoading(false);
       setSubmitted(true);
-    }, 1500);
+      e.currentTarget.reset();
+      return;
+    }
+
+    const json = await response.json().catch(() => ({}));
+    setError(json.error ?? 'Cererea nu a putut fi trimisă.');
+    setLoading(false);
   };
 
   if (submitted) {
@@ -65,6 +93,7 @@ export function BookingForm({ labels }: BookingFormProps) {
             <div className="relative">
               <Calendar className="absolute left-3 top-3 w-4 h-4 text-stone" />
               <input
+                name="checkin"
                 type="date"
                 required
                 className="w-full pl-10 pr-4 py-2 border border-stone-light rounded focus:ring-2 focus:ring-forest focus:border-transparent outline-none transition-all"
@@ -76,6 +105,7 @@ export function BookingForm({ labels }: BookingFormProps) {
             <div className="relative">
               <Calendar className="absolute left-3 top-3 w-4 h-4 text-stone" />
               <input
+                name="checkout"
                 type="date"
                 required
                 className="w-full pl-10 pr-4 py-2 border border-stone-light rounded focus:ring-2 focus:ring-forest focus:border-transparent outline-none transition-all"
@@ -89,12 +119,12 @@ export function BookingForm({ labels }: BookingFormProps) {
             <label className="block text-sm font-medium text-stone-dark mb-1">{labels.guests}</label>
             <div className="relative">
               <Users className="absolute left-3 top-3 w-4 h-4 text-stone" />
-              <select className="w-full pl-10 pr-4 py-2 border border-stone-light rounded focus:ring-2 focus:ring-forest focus:border-transparent outline-none transition-all bg-white">
-                <option value="1">1 Guest</option>
-                <option value="2">2 Guests</option>
-                <option value="3">3 Guests</option>
-                <option value="4">4 Guests</option>
-                <option value="5+">5+ Guests</option>
+              <select name="guests" className="w-full pl-10 pr-4 py-2 border border-stone-light rounded focus:ring-2 focus:ring-forest focus:border-transparent outline-none transition-all bg-white">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5+</option>
               </select>
             </div>
           </div>
@@ -102,11 +132,13 @@ export function BookingForm({ labels }: BookingFormProps) {
             <label className="block text-sm font-medium text-stone-dark mb-1">{labels.unit}</label>
             <div className="relative">
               <Home className="absolute left-3 top-3 w-4 h-4 text-stone" />
-              <select className="w-full pl-10 pr-4 py-2 border border-stone-light rounded focus:ring-2 focus:ring-forest focus:border-transparent outline-none transition-all bg-white">
+              <select name="accommodation_id" className="w-full pl-10 pr-4 py-2 border border-stone-light rounded focus:ring-2 focus:ring-forest focus:border-transparent outline-none transition-all bg-white">
                 <option value="">{labels.selectUnit}</option>
-                <option value="vila">Vila Mare - 7500 lei</option>
-                <option value="beci1">Căsuța tip Beci - 2000 lei</option>
-                <option value="beci2">Căsuța tip Beci 2 - 1500 lei</option>
+                {units.map((unit) => (
+                  <option key={unit.id} value={unit.id}>
+                    {unit.title} - {unit.price}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -115,6 +147,7 @@ export function BookingForm({ labels }: BookingFormProps) {
         <div>
           <label className="block text-sm font-medium text-stone-dark mb-1">{labels.name}</label>
           <input
+            name="full_name"
             type="text"
             required
             placeholder="John Doe"
@@ -126,6 +159,7 @@ export function BookingForm({ labels }: BookingFormProps) {
           <div>
             <label className="block text-sm font-medium text-stone-dark mb-1">{labels.phone}</label>
             <input
+              name="phone"
               type="tel"
               required
               placeholder="060588845"
@@ -135,6 +169,7 @@ export function BookingForm({ labels }: BookingFormProps) {
           <div>
             <label className="block text-sm font-medium text-stone-dark mb-1">{labels.email}</label>
             <input
+              name="email"
               type="email"
               required
               placeholder="email@example.com"
@@ -148,11 +183,14 @@ export function BookingForm({ labels }: BookingFormProps) {
           <div className="relative">
             <MessageSquare className="absolute left-3 top-3 w-4 h-4 text-stone" />
             <textarea
+              name="notes"
               rows={3}
               className="w-full pl-10 pr-4 py-2 border border-stone-light rounded focus:ring-2 focus:ring-forest focus:border-transparent outline-none transition-all"
             />
           </div>
         </div>
+
+        {error && <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
         <button type="submit" disabled={loading} className="w-full btn-primary mt-4 disabled:opacity-70 disabled:cursor-not-allowed">
           {loading ? labels.sending : labels.submit}

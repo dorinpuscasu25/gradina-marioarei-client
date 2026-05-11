@@ -4,35 +4,13 @@ import { Check, ArrowRight } from 'lucide-react';
 import { SectionHeading } from '../components/SectionHeading';
 import { ScrollReveal } from '../components/ScrollReveal';
 import type { I18nProps } from '../i18n/types';
+import type { Accommodation } from '@/src/lib/cms/types';
 
-export function AccommodationPage({ lang, t }: I18nProps) {
-  const units = [
-    {
-      id: 'vila',
-      title: t('accommodation.vila_mare.title'),
-      desc: t('accommodation.vila_mare.desc'),
-      price: t('accommodation.vila_mare.price'),
-      features: t('accommodation.vila_mare.features'),
-      images: ['/casamare.jpg', '/casa_mare_interior.jpg']
-    },
-    {
-      id: 'beci1',
-      title: t('accommodation.beci1.title'),
-      desc: t('accommodation.beci1.desc'),
-      price: t('accommodation.beci1.price'),
-      features: t('accommodation.beci1.features'),
-      images: ['/casa_beci1.jpg', '/casusta_veci1.jpg']
-    },
-    {
-      id: 'beci2',
-      title: t('accommodation.beci2.title'),
-      desc: t('accommodation.beci2.desc'),
-      price: t('accommodation.beci2.price'),
-      features: t('accommodation.beci2.features'),
-      images: ['/casuta_beci2.jpg', '/casuta_beci2_2.jpg', '/_MG_0206_copy.jpg']
-    }
-  ];
+type AccommodationPageProps = I18nProps & {
+  units: Accommodation[];
+};
 
+export function AccommodationPage({ lang, t, units }: AccommodationPageProps) {
   return (
     <div className="pt-32 pb-20 min-h-screen">
       <div className="container-custom">
@@ -72,7 +50,7 @@ export function AccommodationPage({ lang, t }: I18nProps) {
                       {t('accommodation.price_label')}: {unit.price}
                     </span>
                   </div>
-                  <p className="text-stone-dark text-lg mb-8 leading-relaxed">{unit.desc}</p>
+                      <p className="text-stone-dark text-lg mb-8 leading-relaxed">{unit.description}</p>
 
                   <div className="bg-white p-6 rounded-lg border border-stone-light/30 shadow-sm mb-8">
                     <h4 className="font-bold text-forest uppercase tracking-wider mb-4 text-sm">{t('accommodation.amenities')}</h4>

@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import { AboutPage } from '@/src/views/AboutPage';
 import { notFound } from 'next/navigation';
-import { createTranslator, isLanguage } from '@/src/i18n/server';
+import { isLanguage } from '@/src/i18n/server';
 import { buildPageMetadata } from '@/src/seo/metadata';
+import { createCmsTranslator } from '@/src/lib/cms/data';
 
 type PageProps = {
   params: Promise<{ lang: string }>;
@@ -21,6 +22,6 @@ export default async function AboutRoute({ params }: PageProps) {
   if (!isLanguage(lang)) {
     notFound();
   }
-  const t = createTranslator(lang);
+  const t = await createCmsTranslator(lang);
   return <AboutPage lang={lang} t={t} />;
 }

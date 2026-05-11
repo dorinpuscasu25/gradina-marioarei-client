@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import { ContactPage } from '@/src/views/ContactPage';
 import { notFound } from 'next/navigation';
-import { createTranslator, isLanguage } from '@/src/i18n/server';
+import { isLanguage } from '@/src/i18n/server';
 import { buildPageMetadata } from '@/src/seo/metadata';
+import { createCmsTranslator } from '@/src/lib/cms/data';
 
 type PageProps = {
   params: Promise<{ lang: string }>;
@@ -21,6 +22,6 @@ export default async function ContactRoute({ params }: PageProps) {
   if (!isLanguage(lang)) {
     notFound();
   }
-  const t = createTranslator(lang);
+  const t = await createCmsTranslator(lang);
   return <ContactPage lang={lang} t={t} />;
 }

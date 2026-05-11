@@ -10,8 +10,15 @@ import { ContactStrip } from '../components/ContactStrip';
 import { SectionHeading } from '../components/SectionHeading';
 import { GalleryGrid } from '../components/GalleryGrid';
 import type { I18nProps } from '../i18n/types';
+import type { Accommodation } from '@/src/lib/cms/types';
 
-export function HomePage({ lang, t }: I18nProps) {
+type HomePageProps = I18nProps & {
+  accommodations: Accommodation[];
+};
+
+export function HomePage({ lang, t, accommodations }: HomePageProps) {
+  const featuredAccommodations = accommodations.slice(0, 3);
+
   return (
     <div className="min-h-screen">
       <HeroSection
@@ -27,38 +34,19 @@ export function HomePage({ lang, t }: I18nProps) {
         <SectionHeading title={t('accommodation.title')} subtitle={t('accommodation.subtitle')} />
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <AccommodationCard
-            lang={lang}
-            t={t}
-            title={t('accommodation.vila_mare.title')}
-            description={t('accommodation.vila_mare.desc')}
-            features={t('accommodation.vila_mare.features')}
-            image="/casamare.jpg"
-            price={t('accommodation.vila_mare.price')}
-            delay={0}
-          />
-
-          <AccommodationCard
-            lang={lang}
-            t={t}
-            title={t('accommodation.beci1.title')}
-            description={t('accommodation.beci1.desc')}
-            features={t('accommodation.beci1.features')}
-            image="/casa_beci1.jpg"
-            price={t('accommodation.beci1.price')}
-            delay={0.2}
-          />
-
-          <AccommodationCard
-            lang={lang}
-            t={t}
-            title={t('accommodation.beci2.title')}
-            description={t('accommodation.beci2.desc')}
-            features={t('accommodation.beci2.features')}
-            image="/casuta_beci2.jpg"
-            price={t('accommodation.beci2.price')}
-            delay={0.4}
-          />
+          {featuredAccommodations.map((unit, index) => (
+            <AccommodationCard
+              key={unit.id}
+              lang={lang}
+              t={t}
+              title={unit.title}
+              description={unit.description}
+              features={unit.features}
+              image={unit.images[0]}
+              price={unit.price}
+              delay={index * 0.2}
+            />
+          ))}
         </div>
 
         <div className="text-center mt-12">

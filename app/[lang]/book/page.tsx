@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import { BookPage } from '@/src/views/BookPage';
 import { notFound } from 'next/navigation';
-import { createTranslator, isLanguage } from '@/src/i18n/server';
+import { isLanguage } from '@/src/i18n/server';
 import { buildPageMetadata } from '@/src/seo/metadata';
+import { createCmsTranslator, getBookingUnits } from '@/src/lib/cms/data';
 
 type PageProps = {
   params: Promise<{ lang: string }>;
@@ -21,6 +22,7 @@ export default async function BookRoute({ params }: PageProps) {
   if (!isLanguage(lang)) {
     notFound();
   }
-  const t = createTranslator(lang);
-  return <BookPage lang={lang} t={t} />;
+  const t = await createCmsTranslator(lang);
+  const units = await getBookingUnits(lang);
+  return <BookPage lang={lang} t={t} units={units} />;
 }
